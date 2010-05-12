@@ -18,7 +18,7 @@ Distributed under the Boost Software License, Version 1.0.
    (See accompanying file LICENSE_1_0.txt or copy at
          http://www.boost.org/LICENSE_1_0.txt)
 */
-module std.range;
+module range;
 
 public import std.array;
 import std.contracts;
@@ -1778,6 +1778,7 @@ Returns a proxy for the current iterated element.
 /**
 Returns a proxy for the rightmost element.
  */
+    static if (allSatisfy!(isBidirectionalRange, R))
     Proxy back()
     {
         Proxy result;
@@ -1802,6 +1803,7 @@ Advances to the popFront element in all controlled ranges.
 /**
 Calls $(D popBack) for all controlled ranges.
  */
+    static if (allSatisfy!(isBidirectionalRange, R))
     void popBack()
     {
         foreach (i, Unused; R)
@@ -1857,7 +1859,11 @@ Proxy type returned by the access function.
     {
         template ElemPtr(Range)
         {
-            alias std.range.ElementType!(Range)* ElemPtr;
+			static if( hasSwappableElements!Range ){
+            	alias std.range.ElementType!(Range)* ElemPtr;
+            }else{
+				alias std.range.ElementType!(Range) delegate() ElemPtr;
+			}
         }
         Tuple!(staticMap!(ElemPtr, R)) ptrs;
 
@@ -1866,7 +1872,11 @@ Returns the current element in the $(D i)th range.
  */
         /*ref*/ std.range.ElementType!(R[i]) at(int i)()
         {
-            return *ptrs.field[i];
+			static if( hasSwappableElements!(R[i]) ){
+	            return *ptrs.field[i];
+            }else{
+				return ptrs.field[i]();
+			}
         }
 
 /**
@@ -1876,9 +1886,14 @@ the $(D StoppingPolicy.longest) policy.
  */
         bool hasAt(int i)()
         {
-            return *ptrs.field[i];
+			static if( hasSwappableElements!(R[i]) ){
+        	    return *ptrs.field[i];
+            }else{
+				return ptrs.field[i]();
+			}
         }
 
+		static if( allSatisfy!(hasSwappableElements, R) )
         void proxySwap(Proxy rhs)
         {
             foreach (i, Unused; R)
@@ -1893,15 +1908,19 @@ Returns the $(D n)th element in the composite range. Defined if all
 ranges offer random access.
  */
     static if (allSatisfy!(isRandomAccessRange, R))
-        Proxy opIndex(size_t n)
+    Proxy opIndex(size_t n)
+    {
+        Proxy result;
+        foreach (i, Unused; R)
         {
-            Proxy result;
-            foreach (i, Unused; R)
-            {
-                result.ptrs.field[i] = &ranges.field[i][n];
-            }
-            return result;
+			static if( hasSwappableElements!(R[i]) ){
+	            result.ptrs.field[i] = &ranges.field[i][n];
+            }else{
+				result.ptrs.field[i] = (){ return ranges.field[i][n]; };
+			}
         }
+        return result;
+    }
 }
 
 /// Ditto
