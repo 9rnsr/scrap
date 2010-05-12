@@ -18,7 +18,7 @@ Distributed under the Boost Software License, Version 1.0.
    (See accompanying file LICENSE_1_0.txt or copy at
          http://www.boost.org/LICENSE_1_0.txt)
 */
-module range;
+module std.range;
 
 public import std.array;
 import std.contracts;
@@ -1859,11 +1859,14 @@ Proxy type returned by the access function.
     {
         template ElemPtr(Range)
         {
-			static if( hasSwappableElements!Range ){
-            	alias std.range.ElementType!(Range)* ElemPtr;
-            }else{
-				alias std.range.ElementType!(Range) delegate() ElemPtr;
-			}
+            static if (hasSwappableElements!Range)
+            {
+                alias std.range.ElementType!(Range)* ElemPtr;
+            }
+            else
+            {
+                alias std.range.ElementType!(Range) delegate() ElemPtr;
+            }
         }
         Tuple!(staticMap!(ElemPtr, R)) ptrs;
 
@@ -1872,11 +1875,14 @@ Returns the current element in the $(D i)th range.
  */
         /*ref*/ std.range.ElementType!(R[i]) at(int i)()
         {
-			static if( hasSwappableElements!(R[i]) ){
-	            return *ptrs.field[i];
-            }else{
-				return ptrs.field[i]();
-			}
+            static if (hasSwappableElements!(R[i]))
+            {
+                return *ptrs.field[i];
+            }
+            else
+            {
+                return ptrs.field[i]();
+            }
         }
 
 /**
@@ -1886,14 +1892,17 @@ the $(D StoppingPolicy.longest) policy.
  */
         bool hasAt(int i)()
         {
-			static if( hasSwappableElements!(R[i]) ){
-        	    return *ptrs.field[i];
-            }else{
-				return ptrs.field[i]();
-			}
+            static if (hasSwappableElements!(R[i]))
+            {
+                return *ptrs.field[i];
+            }
+            else
+            {
+                return ptrs.field[i]();
+            }
         }
 
-		static if( allSatisfy!(hasSwappableElements, R) )
+        static if (allSatisfy!(hasSwappableElements, R))
         void proxySwap(Proxy rhs)
         {
             foreach (i, Unused; R)
@@ -1913,11 +1922,14 @@ ranges offer random access.
         Proxy result;
         foreach (i, Unused; R)
         {
-			static if( hasSwappableElements!(R[i]) ){
-	            result.ptrs.field[i] = &ranges.field[i][n];
-            }else{
-				result.ptrs.field[i] = (){ return ranges.field[i][n]; };
-			}
+            static if (hasSwappableElements!(R[i]))
+            {
+                result.ptrs.field[i] = &ranges.field[i][n];
+            }
+            else
+            {
+                result.ptrs.field[i] = (){ return ranges.field[i][n]; };
+            }
         }
         return result;
     }
@@ -1963,6 +1975,12 @@ unittest
     swap(z.front(), z.back());
     //@@@BUG@@@
     //sort!("a.at!(0) < b.at!(0)")(zip(a, b));
+    
+    auto c = sequence!("a.field[0] + n * a.field[1]")(1u, 1u);
+    foreach (e; zip(a, b))
+    {
+        assert(e.at!(0) == e.at!(0));
+    }
 }
 
 /**
