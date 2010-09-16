@@ -94,11 +94,17 @@ public:
 	
 	private enum dispatch =
 	q{
+		pragma(msg, "opDispatch!(", Name, ", ", TypeTuple!(Args), ") ", stc);
 		enum i = Sig2Idx!(stc, Name, Args).result;
 //		writefln("  %s Sig2Idx = %s", stc, i);
-		static assert(i >= 0,
-			"member '" ~ Name ~ "' not found in " ~ allNames.stringof);
-		return composeDg(cast(void*)objptr, funtbl.field[i])(args);
+		static if( i >= 0 ){
+			return composeDg(cast(void*)objptr, funtbl.field[i])(args);
+		}else static if( __traits(compiles, mixin("I." ~ Name))
+					  && __traits(isStaticFunction, mixin("I." ~ Name)) ){
+			return mixin("I." ~ Name)(args);
+		}else{
+			static assert(0, "member '" ~ Name ~ "' not found in " ~ allNames.stringof);
+		}
 	};
 	
 	auto opDispatch(string Name, Args...)(Args args)
@@ -109,7 +115,6 @@ public:
 	auto opDispatch(string Name, Args...)(Args args) const
 	{
 		enum stc = 'x';
-//		pragma(msg, "opDispatch!(", Name, ", ", Args, ")");
 		mixin(dispatch);
 	}
 	auto opDispatch(string Name, Args...)(Args args) immutable
@@ -121,6 +126,146 @@ public:
 	{
 		enum stc = 'O';
 		mixin(dispatch);
+	}
+
+//	static auto opDispatch(string Name, Args...)(Args args)
+//	{
+//		enum stc = 's';
+//		mixin(dispatch);
+//	}
+}
+
+
+unittest
+{
+	static class A
+	{
+		int draw(){ return 10; }
+	}
+	
+	alias Interface!q{
+		int draw();
+		static int f(){ return 20; }
+	} S;
+	
+	S s = new A();
+	assert(s.draw() == 10);
+	assert(s.f() == 20);
+//	assert(S.f() == 20);	// static opDispatch not allowed ?
+	static assert(!__traits(compiles, s.g()));
+}
+
+
+unittest
+{
+	static class A
+	{
+		int draw()				{ return 10; }
+		int draw() const		{ return 20; }
+		int draw() immutable	{ return 30; }
+		int draw() shared		{ return 40; }
+	}
+	
+	alias Interface!q{
+		int draw();
+		int draw() const;
+		int draw() immutable;
+		int draw() shared;
+	} Drawable;
+	
+	auto a = new A();
+	auto         d =           Drawable (a);
+	const       cd =     const(Drawable)(a);
+//	immutable   id = immutable(Drawable)(a);	// yet supported create immutable interface
+//	shared      sd =    shared(Drawable)(a);	// yet supported create shared interface
+	assert( d.draw() == 10);
+	assert(cd.draw() == 20);
+//	assert(id.draw() == 30);
+//	assert(sd.draw() == 40);
+}
+
+
+//version(none)	//for test
+unittest
+{
+	static class A
+	{
+		int draw()				{ return 10; }
+		int draw() const		{ return 20; }
+		int draw() immutable	{ return 30; }
+		int draw() shared		{ return 40; }
+	}
+	
+	alias Interface!q{
+		int draw();
+		int draw() const;
+		int draw() immutable;
+		int draw() shared;
+	} Drawable;
+	
+	Drawable d = new A();
+	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 10);	// int draw()
+	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 20);	// int draw() const
+//	assert( composeDg(d.objptr, d.funtbl.field[2])()  == 30);	// int draw() immutable <- invalid address
+	assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared
+}
+
+
+//version(none)	//for test
+unittest
+{
+	static class A
+	{
+		int draw()				{ return 1; }
+		int draw() const		{ return 10; }
+		int draw() immutable	{ return 20; }
+		int draw(int v)			{ return v*2; }
+		int draw(int v, int n)	{ return v*n; }
+	}
+	static class B
+	{
+		int draw()				{ return 2; };
+	}
+	static class X
+	{
+		void undef(){}
+	}
+	static class Y
+	{
+		void draw(double f){}
+	}
+
+	{
+		alias Interface!q{
+			int draw();
+		} Drawable;
+		
+		Drawable d = new A();
+		assert(d.draw() == 1);
+		
+		d = Drawable(new B());
+		assert(d.draw() == 2);
+		
+		static assert(!__traits(compiles, d = Drawable(new X())));
+	}
+	{
+		alias Interface!q{
+			int draw(int v);
+		} Drawable;
+		
+		Drawable d = new A();
+		static assert(!__traits(compiles, d.draw()));
+		assert(d.draw(8) == 16);
+	}
+	{
+		alias Interface!q{
+			int draw(int v, int n);
+		} Drawable;
+		
+		Drawable d = new A();
+		assert(d.draw(8, 8) == 64);
+		
+		static assert(!__traits(compiles, d = Drawable(new Y())));
 	}
 }
 
@@ -278,115 +423,3 @@ unittest
 }
 
 
-unittest
-{
-	static class A
-	{
-		int draw()				{ return 10; }
-		int draw() const		{ return 20; }
-		int draw() immutable	{ return 30; }
-		int draw() shared		{ return 40; }
-	}
-	
-	alias Interface!q{
-		int draw();
-		int draw() const;
-		int draw() immutable;
-		int draw() shared;
-	} Drawable;
-	
-	auto a = new A();
-	auto         d =           Drawable (a);
-	const       cd =     const(Drawable)(a);
-//	immutable   id = immutable(Drawable)(a);	// yet supported create immutable interface
-//	shared      sd =    shared(Drawable)(a);	// yet supported create shared interface
-	assert( d.draw() == 10);
-	assert(cd.draw() == 20);
-//	assert(id.draw() == 30);
-//	assert(sd.draw() == 40);
-}
-
-
-//version(none)	//for test
-unittest
-{
-	static class A
-	{
-		int draw()				{ return 10; }
-		int draw() const		{ return 20; }
-		int draw() immutable	{ return 30; }
-		int draw() shared		{ return 40; }
-	}
-	
-	alias Interface!q{
-		int draw();
-		int draw() const;
-		int draw() immutable;
-		int draw() shared;
-	} Drawable;
-	
-	Drawable d = new A();
-	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 10);	// int draw()
-	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 20);	// int draw() const
-//	assert( composeDg(d.objptr, d.funtbl.field[2])()  == 30);	// int draw() immutable <- invalid address
-	assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared
-}
-
-
-//version(none)	//for test
-unittest
-{
-	static class A
-	{
-		int draw()				{ return 1; }
-		int draw() const		{ return 10; }
-		int draw() immutable	{ return 20; }
-		int draw(int v)			{ return v*2; }
-		int draw(int v, int n)	{ return v*n; }
-	}
-	static class B
-	{
-		int draw()				{ return 2; };
-	}
-	static class X
-	{
-		void undef(){}
-	}
-	static class Y
-	{
-		void draw(double f){}
-	}
-
-	{
-		alias Interface!q{
-			int draw();
-		} Drawable;
-		
-		Drawable d = new A();
-		assert(d.draw() == 1);
-		
-		d = Drawable(new B());
-		assert(d.draw() == 2);
-		
-		static assert(!__traits(compiles, d = Drawable(new X())));
-	}
-	{
-		alias Interface!q{
-			int draw(int v);
-		} Drawable;
-		
-		Drawable d = new A();
-		static assert(!__traits(compiles, d.draw()));
-		assert(d.draw(8) == 16);
-	}
-	{
-		alias Interface!q{
-			int draw(int v, int n);
-		} Drawable;
-		
-		Drawable d = new A();
-		assert(d.draw(8, 8) == 64);
-		
-		static assert(!__traits(compiles, d = Drawable(new Y())));
-	}
-}
