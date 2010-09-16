@@ -5,6 +5,9 @@ import interfaces : Interface;
 import std.stdio;
 
 
+void main(){}
+
+
 class A
 {
 	int draw()				{ return 1; }
@@ -27,7 +30,8 @@ class Y
 }
 
 
-/+unittest
+version(none)	//for test
+unittest
 {
 	{
 		alias Interface!q{
@@ -61,7 +65,8 @@ class Y
 		
 		static assert(!__traits(compiles, d = Drawable(new Y())));
 	}
-}+/
+}
+
 
 /+unittest
 {
@@ -95,10 +100,6 @@ class Y
 	
 //	alias  int delegate() const  A;
 }+/
-
-void main()
-{
-}
 
 
 

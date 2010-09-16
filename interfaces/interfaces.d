@@ -26,16 +26,10 @@
 module interfaces;
 
 import std.traits, std.typecons, std.typetuple;
-import extraits, extypecons;
+import extypecons;
 
 import std.stdio;
 import std.functional;
-
-struct ValueTuple(T...)
-{
-	alias T result;
-}
-
 
 template MakeSignatureTbl(T, int Mode)
 {
@@ -45,40 +39,30 @@ template MakeSignatureTbl(T, int Mode)
 	{
 		alias TypeTuple!(__traits(getVirtualFunctions, T, Name)) Overloads;
 		
-		// aliasで渡された時点で void() と void()const の区別が消えてしまう
-	//	template MakeTuple(alias Member)
-	//	{
-	//		pragma(msg, typeof(&Member));
-	//		alias TypeTuple!(Name, typeof(&Member)) MakeTuple;
-	//	}
-	//	alias staticMap!(MakeTuple, Overloads) result;
-		template MakeTuples(int i){
-			static if( i < Overloads.length ){	// string type
+		template MakeTuples(int N)
+		{
+			static if( N < Overloads.length ){	// string type
 				static if( Mode == 0 ){
 					alias TypeTuple!(
 						Name,
-						MakeTuples!(i+1).result
+						MakeTuples!(N+1).result
 					) result;
 				}
 				static if( Mode == 1 ){			// function-pointer type
 					alias TypeTuple!(
-						typeof(&Overloads[i]),
-						MakeTuples!(i+1).result
+						typeof(&Overloads[N]),
+						MakeTuples!(N+1).result
 					) result;
 				}
 				static if( Mode == 2 ){			// delegate type
 					alias TypeTuple!(
 						typeof({
-							typeof(&Overloads[i]) fp;
+							typeof(&Overloads[N]) fp;
 							return toDelegate(fp);
 						}()),
-						MakeTuples!(i+1).result
+						MakeTuples!(N+1).result
 					) result;
 				}
-			//	alias TypeTuple!(
-			//		ValueTuple!(Name, typeof(&Overloads[i])),
-			//		MakeTuples!(i+1).result
-			//	) result;
 			}else{
 				alias TypeTuple!() result;
 			}
@@ -112,14 +96,14 @@ private:
 
 	template Sig2Idx(string Name, Args...)
 	{
-		template Impl(int i, string Name, Args...)
+		template Impl(int N, string Name, Args...)
 		{
-			static if( i < allNames.length ){
-				static if( allNames[i] == Name
-						&& is(ParameterTypeTuple!(allFpSigs[i]) == Args) ){
-					enum result = i;
+			static if( N < allNames.length ){
+				static if( allNames[N] == Name
+						&& is(ParameterTypeTuple!(allFpSigs[N]) == Args) ){
+					enum result = N;
 				}else{
-					enum result = Impl!(i+1, Name, Args).result;
+					enum result = Impl!(N+1, Name, Args).result;
 				}
 			}else{
 				enum result = -1;
@@ -148,10 +132,15 @@ public:
 	}
 	auto opDispatch(string Name, Args...)(Args args) const
 	{
-		pragma(msg, "aaa");
+		enum i = Sig2Idx!(Name, Args).result;
+		static assert(i >= 0,
+			"member '" ~ Name ~ "' not found in " ~ allNames.stringof);
+		return composeDg(objptr, funtbl.field[i])(args);
 	}
 }
 
+
+version(none)	//for 
 unittest
 {
 	static class A
@@ -159,31 +148,19 @@ unittest
 		int draw()				{ return 1; }
 		int draw() const		{ return 10; }
 	}
+	
 	alias Interface!q{
 		int draw();
 		int draw() const;
 	} Drawable;
 	
-	Drawable d = new A();
-	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
-	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
+	auto a = new A();
+	Drawable d = a;
+	const(Drawable) cd = a;
+	d.draw();
+	cd.draw();
 }
-version(none) unittest
-{
-	class A
-	{
-		int draw()				{ return 1; }
-		int draw() const		{ return 10; }
-	}
-	alias Interface!q{
-		int draw();
-		int draw() const;
-	} Drawable;
-	
-	Drawable d = new A();
-	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
-	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
-}
+
 
 private static bool isAllContains(I, T)()
 {
@@ -255,3 +232,40 @@ auto toDelegate(F)(auto ref F fp) if (isCallable!(F)) {
         return df.del;
     }
 }
+
+
+version(none)	//for test
+unittest
+{
+	static class A
+	{
+		int draw()				{ return 1; }
+		int draw() const		{ return 10; }
+	}
+	alias Interface!q{
+		int draw();
+		int draw() const;
+	} Drawable;
+	
+	Drawable d = new A();
+	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
+	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
+}
+version(none)
+unittest
+{
+	class A
+	{
+		int draw()				{ return 1; }
+		int draw() const		{ return 10; }
+	}
+	alias Interface!q{
+		int draw();
+		int draw() const;
+	} Drawable;
+	
+	Drawable d = new A();
+	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
+	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
+}
+
