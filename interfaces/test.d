@@ -63,20 +63,6 @@ class Y
 	}
 }+/
 
-import extypecons;
-unittest
-{
-	alias Interface!q{
-		int draw();
-		int draw() const;
-	} Drawable;
-	
-	Drawable d = new A();
-//	assert(d.draw() == 10);
-	
-	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
-	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
-}
 /+unittest
 {
 	static class D

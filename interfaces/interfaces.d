@@ -99,10 +99,10 @@ template MakeSignatureTbl(T, int Mode)
 /// 
 struct Interface(string def)
 {
-//protected:	//privateだとなぜか駄目
+protected:	//privateだとなぜか駄目
 	mixin("interface I { " ~ def ~ "}");
 
-//private:
+private:
 	alias MakeSignatureTbl!(I, 0).result allNames;
 	alias MakeSignatureTbl!(I, 1).result allFpSigs;
 	alias MakeSignatureTbl!(I, 2).result allDgSigs;
@@ -126,31 +126,6 @@ struct Interface(string def)
 			}
 		}
 		enum result = Impl!(0, Name, Args).result;
-	}
-	
-	template Function2Delegate(T) if( isFunctionPointer!T )
-	{
-		pragma(msg, "Function2Delegate: ", T);
-	//	static if( ParameterTypeTuple!T.length >= 1 ){
-			// hack: タプル展開後の型に.stringofを適用すると
-			//       余計な括弧が付いてくるので除去する
-			mixin(
-				"alias ReturnType!T delegate(" ~
-					ParameterTypeTuple!T.stringof[1..$-1]
-				~ ") Function2Delegate;"
-			);
-	//	}else{
-	//		alias ReturnType!T delegate(ParameterTypeTuple!T)
-	//			Function2Delegate;
-	//	}
-	}
-	
-	template dgSig(int i)
-	{
-		alias typeof({
-			auto fp = funtbl.field[i];
-			return toDelegate(fp);
-		}()) dgSig;
 	}
 
 public:
@@ -177,6 +152,38 @@ public:
 	}
 }
 
+unittest
+{
+	static class A
+	{
+		int draw()				{ return 1; }
+		int draw() const		{ return 10; }
+	}
+	alias Interface!q{
+		int draw();
+		int draw() const;
+	} Drawable;
+	
+	Drawable d = new A();
+	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
+	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
+}
+version(none) unittest
+{
+	class A
+	{
+		int draw()				{ return 1; }
+		int draw() const		{ return 10; }
+	}
+	alias Interface!q{
+		int draw();
+		int draw() const;
+	} Drawable;
+	
+	Drawable d = new A();
+	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
+	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
+}
 
 private static bool isAllContains(I, T)()
 {
