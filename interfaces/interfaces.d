@@ -25,22 +25,90 @@
  */
 module interfaces;
 
-import std.traits, std.typecons;
+import std.traits, std.typecons, std.typetuple;
 import extraits, extypecons;
+
+import std.stdio;
+import std.functional;
+
+struct ValueTuple(T...)
+{
+	alias T result;
+}
+
+
+template MakeSignatureTbl(T, int Mode)
+{
+	alias TypeTuple!(__traits(allMembers, T)) Names;
+	
+	template CollectOverloadsImpl(string Name)
+	{
+		alias TypeTuple!(__traits(getVirtualFunctions, T, Name)) Overloads;
+		
+		// aliasで渡された時点で void() と void()const の区別が消えてしまう
+	//	template MakeTuple(alias Member)
+	//	{
+	//		pragma(msg, typeof(&Member));
+	//		alias TypeTuple!(Name, typeof(&Member)) MakeTuple;
+	//	}
+	//	alias staticMap!(MakeTuple, Overloads) result;
+		template MakeTuples(int i){
+			static if( i < Overloads.length ){	// string type
+				static if( Mode == 0 ){
+					alias TypeTuple!(
+						Name,
+						MakeTuples!(i+1).result
+					) result;
+				}
+				static if( Mode == 1 ){			// function-pointer type
+					alias TypeTuple!(
+						typeof(&Overloads[i]),
+						MakeTuples!(i+1).result
+					) result;
+				}
+				static if( Mode == 2 ){			// delegate type
+					alias TypeTuple!(
+						typeof({
+							typeof(&Overloads[i]) fp;
+							return toDelegate(fp);
+						}()),
+						MakeTuples!(i+1).result
+					) result;
+				}
+			//	alias TypeTuple!(
+			//		ValueTuple!(Name, typeof(&Overloads[i])),
+			//		MakeTuples!(i+1).result
+			//	) result;
+			}else{
+				alias TypeTuple!() result;
+			}
+		}
+		
+		alias MakeTuples!(0).result result;
+	}
+	template CollectOverloads(string Name)
+	{
+		alias CollectOverloadsImpl!(Name).result CollectOverloads;
+	}
+	
+	alias staticMap!(CollectOverloads, Names) result;
+}
+
 
 
 /// 
 struct Interface(string def)
 {
-protected:	//privateだとなぜか駄目
+//protected:	//privateだとなぜか駄目
 	mixin("interface I { " ~ def ~ "}");
 
-private:
-	alias AllMemFunNamesTuple!I allNames;
-	alias AllMemFunPtrsTuple!I  allSigs;
+//private:
+	alias MakeSignatureTbl!(I, 0).result allNames;
+	alias MakeSignatureTbl!(I, 1).result allFpSigs;
+	alias MakeSignatureTbl!(I, 2).result allDgSigs;
 	
-	void*           objptr;
-	Tuple!(allSigs) funtbl;
+	void*				objptr;
+	Tuple!(allFpSigs)	funtbl;
 
 	template Sig2Idx(string Name, Args...)
 	{
@@ -48,7 +116,7 @@ private:
 		{
 			static if( i < allNames.length ){
 				static if( allNames[i] == Name
-						&& is(ParameterTypeTuple!(allSigs[i]) == Args) ){
+						&& is(ParameterTypeTuple!(allFpSigs[i]) == Args) ){
 					enum result = i;
 				}else{
 					enum result = Impl!(i+1, Name, Args).result;
@@ -76,23 +144,23 @@ private:
 	//			Function2Delegate;
 	//	}
 	}
+	
+	template dgSig(int i)
+	{
+		alias typeof({
+			auto fp = funtbl.field[i];
+			return toDelegate(fp);
+		}()) dgSig;
+	}
 
 public:
 	this(T)(T obj) if( isAllContains!(I, T)() ){
 		foreach( i, name; allNames ){
-			pragma(msg, Function2Delegate!(
-					typeof(funtbl.field[i])
-				).stringof
-				~ " dg = &obj." ~ name ~ ";");
-			mixin(
-				Function2Delegate!(
-					typeof(funtbl.field[i])
-				).stringof
-				~ " dg = &obj." ~ name ~ ";"
-			);
+			allDgSigs[i] dg = mixin("&obj." ~ name);
 			
 			static if( i == 0 ) objptr = dg.ptr;
 			funtbl.field[i] = dg.funcptr;
+			writefln("[%s] : %08X", i, funtbl.field[i]);
 		}
 	}
 	
@@ -103,26 +171,30 @@ public:
 			"member '" ~ Name ~ "' not found in " ~ allNames.stringof);
 		return composeDg(objptr, funtbl.field[i])(args);
 	}
+	auto opDispatch(string Name, Args...)(Args args) const
+	{
+		pragma(msg, "aaa");
+	}
 }
 
 
 private static bool isAllContains(I, T)()
 {
-	alias AllMemFunNamesTuple!I allNames;
-	alias AllMemFunPtrsTuple!I  allSigs;
+	alias MakeSignatureTbl!(I, 0).result allNames;
+	alias MakeSignatureTbl!(I, 1).result allFpSigs;
 	
-	alias AllMemFunNamesTuple!T tgt_allNames;
-	alias AllMemFunPtrsTuple!T  tgt_allSigs;
+	alias MakeSignatureTbl!(T, 0).result tgt_allNames;
+	alias MakeSignatureTbl!(T, 1).result tgt_allFpSigs;
 	
 	bool result = true;
 	foreach( i, name; allNames ){
-		pragma(msg, name, ": ", allSigs[i]);
+		pragma(msg, name, ": ", allFpSigs[i]);
 		
 		bool res = false;
 		foreach( j, s; tgt_allNames ){
 			if( name == s
-			 && is(ParameterTypeTuple!(allSigs[i])
-			 	== ParameterTypeTuple!(tgt_allSigs[j])) ){
+			 && is(ParameterTypeTuple!(allFpSigs[i])
+			 	== ParameterTypeTuple!(tgt_allFpSigs[j])) ){
 				res = true;
 				break;
 			}
@@ -131,4 +203,48 @@ private static bool isAllContains(I, T)()
 		if( !result ) break;
 	}
 	return result;
+}
+
+
+
+auto toDelegate(F)(auto ref F fp) if (isCallable!(F)) {
+
+    static if (is(F == delegate))
+    {
+        return fp;
+    }
+    else static if (is(typeof(&F.opCall) == delegate)
+                || (is(typeof(&F.opCall) V : V*) && is(V == function)))
+    {
+        return toDelegate(&fp.opCall);
+    }
+    else
+    {
+        alias typeof(&(new DelegateFaker!(F)).doIt) DelType;
+
+        static struct DelegateFields {
+            union {
+                DelType del;
+                //pragma(msg, typeof(del));
+
+                struct {
+                    void* contextPtr;
+                    void* funcPtr;
+                }
+            }
+        }
+
+        // fp is stored in the returned delegate's context pointer.
+        // The returned delegate's function pointer points to
+        // DelegateFaker.doIt.
+        DelegateFields df;
+
+        df.contextPtr = cast(void*) fp;
+
+        DelegateFaker!(F) dummy;
+        auto dummyDel = &(dummy.doIt);
+        df.funcPtr = cast(void*)dummyDel.funcptr;	//強制キャストを挟むことで、int delegate() const -> void* が可能になる
+
+        return df.del;
+    }
 }

@@ -9,6 +9,7 @@ class A
 {
 	int draw()				{ return 1; }
 	int draw() const		{ return 10; }
+	int draw() immutable	{ return 20; }
 	int draw(int v)			{ return v*2; }
 	int draw(int v, int n)	{ return v*n; }
 }
@@ -26,7 +27,7 @@ class Y
 }
 
 
-unittest
+/+unittest
 {
 	{
 		alias Interface!q{
@@ -60,20 +61,66 @@ unittest
 		
 		static assert(!__traits(compiles, d = Drawable(new Y())));
 	}
-}
+}+/
+
+import extypecons;
 unittest
 {
 	alias Interface!q{
+		int draw();
 		int draw() const;
 	} Drawable;
 	
 	Drawable d = new A();
-	assert(d.draw() == 10);
+//	assert(d.draw() == 10);
 	
-	
+	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 1);	// int draw()
+	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 10);	// int draw() const
 }
+/+unittest
+{
+	static class D
+	{
+		void* draw()			{ auto dg = &draw; return dg.funcptr; }
+		void* draw() const		{ auto dg = &draw; return dg.funcptr; }
+		void* draw() immutable	{ auto dg = &draw; return dg.funcptr; }
+	}
+	auto d = new D();
+	auto id = cast(immutable)d;
+	auto cd = cast(const)d;
+	writefln("_ draw = %08X",  d.draw());
+	writefln("c draw = %08X", cd.draw());
+	writefln("i draw = %08X", id.draw());
+}+/
 
+
+/+unittest
+{
+	interface T{
+		int draw() const;//{ return 0; }
+	}
+	typeof(&T.draw) f;
+	pragma(msg, typeof(f));
+	typeof(&(new T()).draw) g;
+	pragma(msg, typeof(g));
+	
+	const int delegate() h;
+	pragma(msg, typeof(h));
+	
+//	alias  int delegate() const  A;
+}+/
 
 void main()
 {
 }
+
+
+
+/+
+	template Drawable(T)
+	{
+		alias Interface!xd!q{
+			int draw() const;
+		} Drawable;
+	}
++/
