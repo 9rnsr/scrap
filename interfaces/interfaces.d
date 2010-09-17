@@ -45,31 +45,31 @@ private:
 	void*				objptr;
 	Tuple!(allFpSigs)	funtbl;
 
+	template StorageClassCheck(string mangleof)
+	{
+		static assert(mangleof.length >= 2 && mangleof[0] == 'P');
+		
+		static if( mangleof[1] == 'x' && mangleof[2] == 'F' ){
+			enum StorageClassCheck = 'x';	//const
+		}else static if( mangleof[1] == 'y' && mangleof[2] == 'F' ){
+			enum StorageClassCheck = 'y';	//immutable
+		}else static if( mangleof[1] == 'O' && mangleof[2] == 'F'  ){
+			enum StorageClassCheck = 'O';	//shared
+		}else static if( mangleof[1] == 'F' ){
+			enum StorageClassCheck = 'm';	//mutable
+		}else{
+			enum StorageClassCheck = '\0';
+		}
+	}
 	template Sig2Idx(char stc, string Name, Args...)
 	{
-		template StorageClassCheck(string mangleof)
-		{
-			static assert(mangleof.length >= 2 && mangleof[0] == 'P');
-			
-			static if( stc == 'x' && mangleof[1] == 'x' && mangleof[2] == 'F' ){
-				enum StorageClassCheck = true;	//const
-			}else static if( stc == 'y' && mangleof[1] == 'y' && mangleof[2] == 'F' ){
-				enum StorageClassCheck = true;	//immutable
-			}else static if( stc == 'O' && mangleof[1] == 'O' && mangleof[2] == 'F'  ){
-				enum StorageClassCheck = true;	//shared
-			}else static if( stc == 'm' && mangleof[1] == 'F' ){
-				enum StorageClassCheck = true;	//mutable
-			}else{
-				enum StorageClassCheck = false;
-			}
-		}
 		template Impl(int N, string Name, Args...)
 		{
 			static if( N < allNames.length ){
 //				pragma(msg, "   find in Sig2Idx, [", N, "] ", stc, " ", allFpSigs[N], " ", allFpSigs[N].mangleof);
 				static if( allNames[N] == Name
 						&& is(ParameterTypeTuple!(allFpSigs[N]) == Args)
-						&& StorageClassCheck!(allFpSigs[N].mangleof) ){
+						&& stc == StorageClassCheck!(allFpSigs[N].mangleof) ){
 					enum result = N;
 				}else{
 					enum result = Impl!(N+1, Name, Args).result;
@@ -80,21 +80,33 @@ private:
 		}
 		enum result = Impl!(0, Name, Args).result;
 	}
+	template GetFuncPointer(T, int i)
+	{
+		//pragma(msg, allFpSigs[i], " == ", allFpSigs[i].mangleof);
+		static if( StorageClassCheck!(allFpSigs[i].mangleof) == 'y' ){
+			//enum allFpSigs[i] GetFuncPointer = mixin("&immutable(T)." ~ allNames[i]);
+			static assert(0, "immutable member function does not support.");
+		}else static if( StorageClassCheck!(allFpSigs[i].mangleof) == 'O' ){
+			//enum allFpSigs[i] GetFuncPointer = mixin("&shared(T)." ~ allNames[i]);
+			static assert(0, "shared member function does not support.");
+		}else{
+			enum allFpSigs[i] GetFuncPointer = mixin("&T." ~ allNames[i]);
+		}
+	}
 
 public:
 	this(T)(T obj) if( isAllContains!(I, T)() ){
+		objptr = cast(void*)obj;
 		foreach( i, name; allNames ){
-			allDgSigs[i] dg = mixin("&obj." ~ name);
-			
-			static if( i == 0 ) objptr = dg.ptr;
-			funtbl.field[i] = dg.funcptr;
+			//funtbl.field[i] = mixin("&T." ~ allNames[i]);	// hack: テンプレート関数中で直接関数アドレスを取れない
+			funtbl.field[i] = GetFuncPointer!(T, i);
 //			writefln("[%s] : %08X <- %s", i, cast(void*)funtbl.field[i], allDgSigs[i].stringof);
 		}
 	}
 	
 	private enum dispatch =
 	q{
-		pragma(msg, "opDispatch!(", Name, ", ", TypeTuple!(Args), ") ", stc);
+//		pragma(msg, "opDispatch!(", Name, ", ", TypeTuple!(Args), ") ", stc);
 		enum i = Sig2Idx!(stc, Name, Args).result;
 //		writefln("  %s Sig2Idx = %s", stc, i);
 		static if( i >= 0 ){
@@ -136,6 +148,7 @@ public:
 }
 
 
+//version(none)	//for test
 unittest
 {
 	static class A
@@ -162,26 +175,26 @@ unittest
 	{
 		int draw()				{ return 10; }
 		int draw() const		{ return 20; }
-		int draw() immutable	{ return 30; }
-		int draw() shared		{ return 40; }
+//		int draw() immutable	{ return 30; }	// not supported
+//		int draw() shared		{ return 40; }	// not supported
 	}
 	
 	alias Interface!q{
 		int draw();
 		int draw() const;
-		int draw() immutable;
-		int draw() shared;
+//		int draw() immutable;
+//		int draw() shared;
 	} Drawable;
 	
 	auto a = new A();
 	auto         d =           Drawable (a);
 	const       cd =     const(Drawable)(a);
-//	immutable   id = immutable(Drawable)(a);	// yet supported create immutable interface
-//	shared      sd =    shared(Drawable)(a);	// yet supported create shared interface
+//	immutable   id = immutable(Drawable)(a);	// not supported
+//	shared      sd =    shared(Drawable)(a);	// not supported
 	assert( d.draw() == 10);
 	assert(cd.draw() == 20);
-//	assert(id.draw() == 30);
-//	assert(sd.draw() == 40);
+//	assert(id.draw() == 30);	// not supported
+//	assert(sd.draw() == 40);	// not supported
 }
 
 
@@ -192,22 +205,22 @@ unittest
 	{
 		int draw()				{ return 10; }
 		int draw() const		{ return 20; }
-		int draw() immutable	{ return 30; }
-		int draw() shared		{ return 40; }
+//		int draw() immutable	{ return 30; }	// not supported
+//		int draw() shared		{ return 40; }	// not supported
 	}
 	
 	alias Interface!q{
 		int draw();
 		int draw() const;
-		int draw() immutable;
-		int draw() shared;
+//		int draw() immutable;	// not supported
+//		int draw() shared;		// not supported
 	} Drawable;
 	
 	Drawable d = new A();
 	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 10);	// int draw()
 	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 20);	// int draw() const
 //	assert( composeDg(d.objptr, d.funtbl.field[2])()  == 30);	// int draw() immutable <- invalid address
-	assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared
+//	assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared
 }
 
 
@@ -218,7 +231,6 @@ unittest
 	{
 		int draw()				{ return 1; }
 		int draw() const		{ return 10; }
-		int draw() immutable	{ return 20; }
 		int draw(int v)			{ return v*2; }
 		int draw(int v, int n)	{ return v*n; }
 	}
