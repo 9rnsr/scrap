@@ -6,17 +6,13 @@
 /**
 	実装改良点：
 		objptrとfuncptrを一旦分離し、再結合する方式を取るなら、
-		const/immutable/synchronizedなどの修飾も維持する必要がある
+		const/immutable/sharedの修飾も維持する必要がある
 		
 		delegate.ptrは同じobjのメンバ関数から取ったものなら常に同じか？
 		継承関係(多層、class/interface)に対して変化しないか？
 		
 		Interfaceという名前
 		object.dに同名の構造体がある
-		
-		メンバ関数のリスト
-		名前:string、引数型:型タプル、修飾型:std.traitsのfunctionAttributesを利用できる？
-		→タプルのタプルでTable構成する？
 		
 		
 		
@@ -35,6 +31,11 @@ import std.functional;
 struct Interface(string def)
 {
 protected:	//privateだとなぜか駄目
+	static assert(
+		__traits(compiles, {
+			mixin("interface I { " ~ def ~ "}");
+		}),
+		"invalid interface definition");
 	mixin("interface I { " ~ def ~ "}");
 
 private:
@@ -80,7 +81,7 @@ private:
 		}
 		enum result = Impl!(0, Name, Args).result;
 	}
-	template GetFuncPointer(T, int i)
+/+	template GetFuncPointer(T, int i)
 	{
 		//pragma(msg, allFpSigs[i], " == ", allFpSigs[i].mangleof);
 		static if( StorageClassCheck!(allFpSigs[i].mangleof) == 'y' ){
@@ -92,14 +93,15 @@ private:
 		}else{
 			enum allFpSigs[i] GetFuncPointer = mixin("&T." ~ allNames[i]);
 		}
-	}
+	}+/
 
 public:
-	this(T)(T obj) if( isAllContains!(I, T)() ){
+	this(T)(T obj) if( isAllContains!(I, T)() )
+	{
 		objptr = cast(void*)obj;
 		foreach( i, name; allNames ){
-			//funtbl.field[i] = mixin("&T." ~ allNames[i]);	// hack: テンプレート関数中で直接関数アドレスを取れない
-			funtbl.field[i] = GetFuncPointer!(T, i);
+			allDgSigs[i] dg = mixin("&obj." ~ name);
+			funtbl.field[i] = dg.funcptr;
 //			writefln("[%s] : %08X <- %s", i, cast(void*)funtbl.field[i], allDgSigs[i].stringof);
 		}
 	}
@@ -145,6 +147,32 @@ public:
 //		enum stc = 's';
 //		mixin(dispatch);
 //	}
+}
+
+
+unittest
+{
+	static class A{
+		int draw(){ return 10; }
+	}
+	static class B : A{
+		int draw(){ return 20; }
+	}
+	
+	alias Interface!q{
+		int draw();
+	} Drawable;
+	
+	auto a = new A();
+	auto b = new B();
+	
+	Drawable d;
+	d = Drawable(a);
+	assert(d.draw() == 10);
+	d = Drawable(b);
+	assert(d.draw() == 20);
+	d = Drawable(cast(A)b);
+	assert(d.draw() == 20);		// dynamic interface resolution
 }
 
 
@@ -247,6 +275,13 @@ unittest
 		void draw(double f){}
 	}
 
+	{
+		static assert(!__traits(compiles, {
+			alias Interface!q{
+				int x = 0;
+			} Drawable;
+		}));
+	}
 	{
 		alias Interface!q{
 			int draw();
