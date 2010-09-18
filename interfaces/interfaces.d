@@ -26,6 +26,8 @@ import std.functional;
 
 //import std.stdio, std.string;
 
+//version = SharedImmutableSupport;
+
 
 /// 
 struct Interface(string def)
@@ -46,23 +48,19 @@ private:
 	void*				objptr;
 	Tuple!(allFpSigs)	funtbl;
 
+	static bool startWith(string s, string pattern) pure
+	{
+		return s.length >= pattern.length && s[0..pattern.length] == pattern;
+	}
 	template StorageClassCheck(string mangleof)
 	{
-		static assert(mangleof.length >= 2 && mangleof[0] == 'P');
-		
-		static if( mangleof[1] == 'x' && mangleof[2] == 'F' ){
-			enum StorageClassCheck = 'x';	//const
-		}else static if( mangleof[1] == 'y' && mangleof[2] == 'F' ){
-			enum StorageClassCheck = 'y';	//immutable
-		}else static if( mangleof[1] == 'O' && mangleof[2] == 'F'  ){
-			enum StorageClassCheck = 'O';	//shared
-		}else static if( mangleof[1] == 'F' ){
-			enum StorageClassCheck = 'm';	//mutable
-		}else{
-			enum StorageClassCheck = '\0';
-		}
+		static if( startWith(mangleof, "PF") )	enum StorageClassCheck = "";	//(mutable)
+		static if( startWith(mangleof, "PxF") )	enum StorageClassCheck = "x";	//const
+		static if( startWith(mangleof, "POF") )	enum StorageClassCheck = "O";	//shared
+		static if( startWith(mangleof, "POxF") )enum StorageClassCheck = "Ox";	//shared const
+		static if( startWith(mangleof, "PyF") )	enum StorageClassCheck = "y";	//immutable
 	}
-	template Sig2Idx(char stc, string Name, Args...)
+	template Sig2Idx(string stc, string Name, Args...)
 	{
 		template Impl(int N, string Name, Args...)
 		{
@@ -123,22 +121,27 @@ public:
 	
 	auto opDispatch(string Name, Args...)(Args args)
 	{
-		enum stc = 'm';
+		enum stc = "";
 		mixin(dispatch);
 	}
 	auto opDispatch(string Name, Args...)(Args args) const
 	{
-		enum stc = 'x';
-		mixin(dispatch);
-	}
-	auto opDispatch(string Name, Args...)(Args args) immutable
-	{
-		enum stc = 'y';
+		enum stc = "x";
 		mixin(dispatch);
 	}
 	auto opDispatch(string Name, Args...)(Args args) shared
 	{
-		enum stc = 'O';
+		enum stc = "O";
+		mixin(dispatch);
+	}
+	auto opDispatch(string Name, Args...)(Args args) shared const
+	{
+		enum stc = "Ox";
+		mixin(dispatch);
+	}
+	auto opDispatch(string Name, Args...)(Args args) immutable
+	{
+		enum stc = "y";
 		mixin(dispatch);
 	}
 
@@ -203,52 +206,55 @@ unittest
 	{
 		int draw()				{ return 10; }
 		int draw() const		{ return 20; }
-//		int draw() immutable	{ return 30; }	// not supported
-//		int draw() shared		{ return 40; }	// not supported
+  version(SharedImmutableSupport)
+  {
+		int draw() shared		{ return 30; }	// not supported
+		int draw() shared const	{ return 40; }	// not supported
+		int draw() immutable	{ return 50; }	// not supported
+  }
 	}
 	
 	alias Interface!q{
 		int draw();
 		int draw() const;
-//		int draw() immutable;
-//		int draw() shared;
+  version(SharedImmutableSupport)
+  {
+		int draw() shared;
+		int draw() shared const;
+		int draw() immutable;
+  }
 	} Drawable;
 	
 	auto a = new A();
-	auto         d =           Drawable (a);
-	const       cd =     const(Drawable)(a);
-//	immutable   id = immutable(Drawable)(a);	// not supported
-//	shared      sd =    shared(Drawable)(a);	// not supported
-	assert( d.draw() == 10);
-	assert(cd.draw() == 20);
-//	assert(id.draw() == 30);	// not supported
-//	assert(sd.draw() == 40);	// not supported
-}
-
-
-//version(none)	//for test
-unittest
-{
-	static class A
 	{
-		int draw()				{ return 10; }
-		int draw() const		{ return 20; }
-//		int draw() immutable	{ return 30; }	// not supported
-//		int draw() shared		{ return 40; }	// not supported
+		Drawable d = a;
+		assert( composeDg(d.objptr, d.funtbl.field[0])()  == 10);	// int draw()
+		assert( composeDg(d.objptr, d.funtbl.field[1])()  == 20);	// int draw() const
+  version(SharedImmutableSupport)
+  {
+		assert( composeDg(d.objptr, d.funtbl.field[2])()  == 30);	// int draw() shared
+		assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared const
+		assert( composeDg(d.objptr, d.funtbl.field[4])()  == 50);	// int draw() immutable <- invalid address
+  }
 	}
-	
-	alias Interface!q{
-		int draw();
-		int draw() const;
-//		int draw() immutable;	// not supported
-//		int draw() shared;		// not supported
-	} Drawable;
-	
-	Drawable d = new A();
-	assert( composeDg(d.objptr, d.funtbl.field[0])()  == 10);	// int draw()
-	assert( composeDg(d.objptr, d.funtbl.field[1])()  == 20);	// int draw() const
-//	assert( composeDg(d.objptr, d.funtbl.field[2])()  == 30);	// int draw() immutable <- invalid address
-//	assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared
+	{
+		auto           d =           Drawable (a);
+		const         cd =           Drawable (a);
+  version(SharedImmutableSupport)
+  {
+		shared        sd =    shared(Drawable)(a);	// not supported
+		shared const scd =    shared(Drawable)(a);	// not supported
+		immutable     id = immutable(Drawable)(a);	// not supported
+  }
+		assert(  d.draw() == 10);
+		assert( cd.draw() == 20);
+  version(SharedImmutableSupport)
+  {
+		assert( sd.draw() == 30);	// not supported
+		assert(scd.draw() == 40);	// not supported
+		assert( id.draw() == 50);	// not supported
+  }
+	}
 }
 
 
