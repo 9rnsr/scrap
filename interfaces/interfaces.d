@@ -5,17 +5,11 @@
  */
 /**
 	実装改良点：
-		objptrとfuncptrを一旦分離し、再結合する方式を取るなら、
-		const/immutable/sharedの修飾も維持する必要がある
-		
 		delegate.ptrは同じobjのメンバ関数から取ったものなら常に同じか？
 		継承関係(多層、class/interface)に対して変化しないか？
 		
 		Interfaceという名前
 		object.dに同名の構造体がある
-		
-		
-		
 	
 	
  */
@@ -26,7 +20,8 @@ import std.functional;
 
 //import std.stdio, std.string;
 
-//version = SharedImmutableSupport;
+version = SharedSupport;
+//version = ImmutableSupport;
 
 
 /// 
@@ -45,8 +40,8 @@ private:
 	alias MakeSignatureTbl!(I, 1).result allFpSigs;
 	alias MakeSignatureTbl!(I, 2).result allDgSigs;
 	
-	void*				objptr;
-	Tuple!(allFpSigs)	funtbl;
+	void*		objptr;
+	allFpSigs	funtbl;
 
 	static bool startWith(string s, string pattern) pure
 	{
@@ -79,28 +74,31 @@ private:
 		}
 		enum result = Impl!(0, Name, Args).result;
 	}
-/+	template GetFuncPointer(T, int i)
-	{
-		//pragma(msg, allFpSigs[i], " == ", allFpSigs[i].mangleof);
-		static if( StorageClassCheck!(allFpSigs[i].mangleof) == 'y' ){
-			//enum allFpSigs[i] GetFuncPointer = mixin("&immutable(T)." ~ allNames[i]);
-			static assert(0, "immutable member function does not support.");
-		}else static if( StorageClassCheck!(allFpSigs[i].mangleof) == 'O' ){
-			//enum allFpSigs[i] GetFuncPointer = mixin("&shared(T)." ~ allNames[i]);
-			static assert(0, "shared member function does not support.");
-		}else{
-			enum allFpSigs[i] GetFuncPointer = mixin("&T." ~ allNames[i]);
-		}
-	}+/
 
 public:
 	this(T)(T obj) if( isAllContains!(I, T)() )
 	{
 		objptr = cast(void*)obj;
 		foreach( i, name; allNames ){
-			allDgSigs[i] dg = mixin("&obj." ~ name);
-			funtbl.field[i] = dg.funcptr;
-//			writefln("[%s] : %08X <- %s", i, cast(void*)funtbl.field[i], allDgSigs[i].stringof);
+//			pragma(msg, "[", i, "] ", name, " : ", allDgSigs[i], " : ", allFpSigs[i]);
+			static if( is(allFpSigs[i] U == U*) ){
+				static if( is(U == immutable) ){
+//					pragma(msg, " -> immutable");
+					allDgSigs[i] dg = mixin("&(cast(immutable)obj)." ~ name);
+				}else static if( is(U == shared) && is(U == const) ){
+//					pragma(msg, " -> shared const");
+					allDgSigs[i] dg = mixin("&(cast(shared const)obj)." ~ name);
+				}else static if( is(U == shared) ){
+//					pragma(msg, " -> shared");
+					allDgSigs[i] dg = mixin("&(cast(shared)obj)." ~ name);
+				}else static if( is(U == const) ){
+//					pragma(msg, " -> const");
+					allDgSigs[i] dg = mixin("&(cast(const)obj)." ~ name);
+				}else{
+					allDgSigs[i] dg = mixin("&(cast(Unqual!T)obj)." ~ name);
+				}
+			}
+			funtbl[i] = dg.funcptr;
 		}
 	}
 	
@@ -110,7 +108,7 @@ public:
 		enum i = Sig2Idx!(stc, Name, Args).result;
 //		writefln("  %s Sig2Idx = %s", stc, i);
 		static if( i >= 0 ){
-			return composeDg(cast(void*)objptr, funtbl.field[i])(args);
+			return composeDg(cast(void*)objptr, funtbl[i])(args);
 		}else static if( __traits(compiles, mixin("I." ~ Name))
 					  && __traits(isStaticFunction, mixin("I." ~ Name)) ){
 			return mixin("I." ~ Name)(args);
@@ -179,7 +177,6 @@ unittest
 }
 
 
-//version(none)	//for test
 unittest
 {
 	static class A
@@ -206,59 +203,61 @@ unittest
 	{
 		int draw()				{ return 10; }
 		int draw() const		{ return 20; }
-  version(SharedImmutableSupport)
+  version(SharedSupport)
   {
 		int draw() shared		{ return 30; }	// not supported
 		int draw() shared const	{ return 40; }	// not supported
-		int draw() immutable	{ return 50; }	// not supported
   }
+		int draw() immutable	{ return 50; }	// not supported
 	}
 	
 	alias Interface!q{
 		int draw();
 		int draw() const;
-  version(SharedImmutableSupport)
+  version(SharedSupport)
   {
 		int draw() shared;
 		int draw() shared const;
-		int draw() immutable;
   }
+		int draw() immutable;
 	} Drawable;
 	
 	auto a = new A();
 	{
 		Drawable d = a;
-		assert( composeDg(d.objptr, d.funtbl.field[0])()  == 10);	// int draw()
-		assert( composeDg(d.objptr, d.funtbl.field[1])()  == 20);	// int draw() const
-  version(SharedImmutableSupport)
+		assert( composeDg(d.objptr, d.funtbl[0])()  == 10);	// int draw()
+		assert( composeDg(d.objptr, d.funtbl[1])()  == 20);	// int draw() const
+  version(SharedSupport)
   {
-		assert( composeDg(d.objptr, d.funtbl.field[2])()  == 30);	// int draw() shared
-		assert( composeDg(d.objptr, d.funtbl.field[3])()  == 40);	// int draw() shared const
-		assert( composeDg(d.objptr, d.funtbl.field[4])()  == 50);	// int draw() immutable <- invalid address
+		assert( composeDg(d.objptr, d.funtbl[2])()  == 30);	// int draw() shared
+		assert( composeDg(d.objptr, d.funtbl[3])()  == 40);	// int draw() shared const
+  }
+  version(ImmutableSupport)
+  {
+		assert( composeDg(d.objptr, d.funtbl[4])()  == 50);	// int draw() immutable <- invalid address
   }
 	}
 	{
 		auto           d =           Drawable (a);
 		const         cd =           Drawable (a);
-  version(SharedImmutableSupport)
-  {
-		shared        sd =    shared(Drawable)(a);	// not supported
-		shared const scd =    shared(Drawable)(a);	// not supported
-		immutable     id = immutable(Drawable)(a);	// not supported
-  }
+		shared        sd =    cast(shared)Drawable(a);	// workaround for unitetest?
+		shared const scd =    cast(shared)Drawable(a);	// workaround for unitetest?
+		immutable     id = cast(immutable)Drawable(a);	// workaround for unitetest?
 		assert(  d.draw() == 10);
 		assert( cd.draw() == 20);
-  version(SharedImmutableSupport)
+  version(SharedSupport)
   {
-		assert( sd.draw() == 30);	// not supported
-		assert(scd.draw() == 40);	// not supported
-		assert( id.draw() == 50);	// not supported
+		assert( sd.draw() == 30);
+		assert(scd.draw() == 40);
+  }
+  version(ImmutableSupport)
+  {
+		assert( id.draw() == 50);
   }
 	}
 }
 
 
-//version(none)	//for test
 unittest
 {
 	static class A
