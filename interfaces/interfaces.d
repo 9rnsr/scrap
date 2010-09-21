@@ -398,6 +398,7 @@ private static bool isAllContains(I, T)()
 }
 
 
+// modified from std.functional
 auto toDelegate(F)(auto ref F fp) if (isCallable!(F)) {
 
     static if (is(F == delegate))
@@ -420,7 +421,11 @@ auto toDelegate(F)(auto ref F fp) if (isCallable!(F)) {
 
                 struct {
                     void* contextPtr;
-                    void* funcPtr;
+                    typeof({
+						auto dg = &(new DelegateFaker!(F)).doIt;
+						return dg.funcptr;
+					}()) funcPtr;
+			        	//get delegate type including StorageClass Modifier
                 }
             }
         }
@@ -434,8 +439,7 @@ auto toDelegate(F)(auto ref F fp) if (isCallable!(F)) {
 
         DelegateFaker!(F) dummy;
         auto dummyDel = &(dummy.doIt);
-        df.funcPtr = cast(void*) dummyDel.funcptr;
-        	//use cast expression for converting from R delegate(A...) const to void*
+        df.funcPtr = dummyDel.funcptr;
 
         return df.del;
     }
