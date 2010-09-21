@@ -1,6 +1,6 @@
 ﻿module test;
 
-import interfaces : Interface;
+import interfaces;
 
 import std.stdio;
 
