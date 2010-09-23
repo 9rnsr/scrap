@@ -13,7 +13,7 @@ import meta_forward, meta_expand;
 
 private template AdaptTo(Interface) if( is(Interface == interface) )
 {
-	private template MakeSignatureTbl(T, int mode)
+	private template InterfaceSignatures(T, int mode)
 	{
 		alias TypeTuple!(__traits(allMembers, T)) Names;
 		
@@ -21,28 +21,28 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 		{
 			alias TypeTuple!(__traits(getVirtualFunctions, T, Name)) Overloads;
 			
-			template MakeTuples(int N)
+			template MakeTuples(int n)
 			{
-				static if( N < Overloads.length )
+				static if( n >= Overloads.length )
+				{
+					alias TypeTuple!() Result;
+				}
+				else
 				{
 					static if( mode == 0 )	// identifier names
 					{
 						alias TypeTuple!(
 							Name,
-							MakeTuples!(N+1).Result
+							MakeTuples!(n+1).Result
 						) Result;
 					}
 					static if( mode == 1 )	// function types
 					{
 						alias TypeTuple!(
-							typeof(Overloads[N]),
-							MakeTuples!(N+1).Result
+							typeof(Overloads[n]),
+							MakeTuples!(n+1).Result
 						) Result;
 					}
-				}
-				else
-				{
-					alias TypeTuple!() Result;
 				}
 			}
 			
@@ -55,13 +55,71 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 		
 		alias staticMap!(CollectOverloads, Names) Result;
 	}
-	alias MakeSignatureTbl!(Interface, 0).Result Names;
-	alias MakeSignatureTbl!(Interface, 1).Result FnTypes;
+	alias InterfaceSignatures!(Interface, 0).Result Names;
+	alias InterfaceSignatures!(Interface, 1).Result FnTypes;
 	
-	bool isAllContains(T)()
+	template CovariantSignatures(T)
 	{
-		alias MakeSignatureTbl!(T, 0).Result T_Names;
-		alias MakeSignatureTbl!(T, 1).Result T_FnTypes;
+		alias InterfaceSignatures!(T, 0).Result T_Names;
+		alias InterfaceSignatures!(T, 1).Result T_FnTypes;
+		
+		private template equalTypeIndex(int n, int k=0)
+		{
+			static if( k >= T_Names.length )
+			{
+				enum equalTypeIndex = -1;
+			}
+			else static if( Names[n] == T_Names[k]
+					&& is(T_FnTypes[k] == FnTypes[n]) )
+			{
+				enum equalTypeIndex = k;
+			}
+			else
+			{
+				enum equalTypeIndex = equalTypeIndex!(n, k+1);
+			}
+		}
+		private template covariantTypeIndex(int n, int k=0)
+		{
+			static if( equalTypeIndex!n != -1 )
+			{
+				enum covariantTypeIndex = equalTypeIndex!n;
+			}
+			else static if( k >= T_Names.length )
+			{
+				enum covariantTypeIndex = -1;
+			}
+			else static if( Names[n] == T_Names[k]
+					&& isCovariantWith!(T_FnTypes[k], FnTypes[n]) )
+			{
+				enum covariantTypeIndex = k;
+			}
+			else
+			{
+				enum covariantTypeIndex = covariantTypeIndex!(n, k+1);
+			}
+		}
+		template Signatures(int n=0)
+		{
+			static if( n >= Names.length )
+			{
+				alias TypeTuple!() Signatures;
+			}
+			else
+			{
+				alias TypeTuple!(
+					T_FnTypes[covariantTypeIndex!n],
+					Signatures!(n+1)
+				) Signatures;
+			}
+		}
+		alias Signatures!() Result;
+	}
+	
+	bool hasRequireMethods(T)()
+	{
+		alias InterfaceSignatures!(T, 0).Result T_Names;
+		alias InterfaceSignatures!(T, 1).Result T_FnTypes;
 		
 		bool result = true;
 		foreach( i, name; Names )
@@ -70,7 +128,7 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 			bool res = false;
 			foreach( j, s; T_Names )
 			{
-				if( name == s && is(FnTypes[i] == T_FnTypes[j]) )
+				if( name == s && isCovariantWith!(T_FnTypes[j], FnTypes[i]) )
 				{
 					res = true;
 					break;
@@ -84,6 +142,9 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 	
 	final class Impl(T) : Interface
 	{
+		alias CovariantSignatures!T.Result T_FnTypes;
+//		pragma(msg, "Impl!(", T, ") : I_FnTypes=", FnTypes, ", T_FnTypes=", T_FnTypes);
+	
 	private:
 		T obj;
 		this(T o){ obj = o; }
@@ -100,7 +161,7 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 				enum result = 
 					mixin(expand!q{
 						mixin Forward!(
-							FnTypes[${n.stringof}],
+							T_FnTypes[${n.stringof}],	// covariant
 							Names[${n.stringof}],
 							"return obj." ~ Names[${n.stringof}] ~ "(args);"
 						);
@@ -108,11 +169,12 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 					~ MixinAll!(n+1).result;
 			}
 		}
+//		pragma(msg, MixinAll!(0).result);
 		mixin(MixinAll!(0).result);
 	}
 }
 /// 
-Interface adaptTo(Interface, T)(T obj) if( AdaptTo!Interface.isAllContains!T() )
+Interface adaptTo(Interface, T)(T obj) if( AdaptTo!Interface.hasRequireMethods!T() )
 {
 	return new AdaptTo!Interface.Impl!T(obj);
 }
@@ -296,4 +358,35 @@ unittest
 	}
 }
 
+
+unittest
+{
+	static class C
+	{
+		int draw(){ return 10; }
+	}
+	interface Drawable
+	{
+		long draw();
+	}
+//	pragma(msg, isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
+	auto d = adaptTo!Drawable(new C());
+	assert(d.draw() == 10);
+}
+
+
+/+unittest
+{
+	static class C
+	{
+		void fi() immutable{}
+		void fc() const{}
+		
+		void f(){}
+	}
+	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.fc), typeof(C.fi)));
+	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.fi), typeof(C.fc)));
+	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.f), typeof(C.fc)));
+	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.fc), typeof(C.f)));
+}+/
 
