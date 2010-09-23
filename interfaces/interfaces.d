@@ -11,9 +11,79 @@ import std.functional;
 import meta_forward, meta_expand;
 
 version = SharedTest;
-//version = ImmutableTest;
+version = ImmutableTest;
 
 
+private template AdaptTo(I) if( is(I == interface) )
+{
+	alias MakeSignatureTbl!(I, 0).result Names;
+	alias MakeSignatureTbl!(I, 3).result FnTypes;
+	
+	bool isAllContains(T)()
+	{
+		alias MakeSignatureTbl!(I, 0).result I_Names;
+		alias MakeSignatureTbl!(I, 1).result I_FpTypes;
+		
+		alias MakeSignatureTbl!(T, 0).result T_Names;
+		alias MakeSignatureTbl!(T, 1).result T_FpTypes;
+		
+		bool result = true;
+		foreach( i, name; I_Names )
+		{
+			
+			bool res = false;
+			foreach( j, s; T_Names )
+			{
+				if( name == s
+				 && is(ParameterTypeTuple!(I_FpTypes[i])
+					== ParameterTypeTuple!(T_FpTypes[j])) )
+				{
+					res = true;
+					break;
+				}
+			}
+			result = result && res;
+			if( !result ) break;
+		}
+		return result;
+	}
+	
+	final class Impl(T) : I
+	{
+	private:
+		T obj;
+		this(T o){ obj = o; }
+	
+	public:
+		template MixinAll(int n)
+		{
+			static if( n >= Names.length )
+			{
+				enum result = q{};
+			}
+			else
+			{
+	//			pragma(msg, FnTypes[n]);
+				enum N = n.stringof;
+				enum result = 
+					mixin(expand!q{
+						mixin Forward!(
+							FnTypes[${N}],
+							Names[${N}],	//"__${N}__",
+							"return obj." ~ Names[${N}] ~ "(args);"
+						);
+					//	mixin("alias __${N}__ " ~ Names[${N}] ~ ";");
+					})
+					~ MixinAll!(n+1).result;
+			}
+		}
+//		pragma(msg, MixinAll!(0).result);
+		mixin(MixinAll!(0).result);
+	}
+}
+
+
+/+
 template LazyInterfaceI(string def)
 {
 	static assert(
@@ -154,11 +224,12 @@ public:
 	}
 
 }
++/
 
 
-LazyInterface!I adaptTo(I, T)(T obj)
+I adaptTo(I, T)(T obj) if( AdaptTo!I.isAllContains!T() )
 {
-	return LazyInterface!I(obj);
+	return new AdaptTo!I.Impl!T(obj);
 }
 
 
@@ -174,8 +245,7 @@ unittest
 	}
 	
 	auto c = new C();
-	auto d = adaptTo!Drawable(c);
-//	Drawable d = adaptTo!Drawable(c);
+	Drawable d = adaptTo!Drawable(c);
 	assert(d.draw() == 10);
 }
 
@@ -186,13 +256,13 @@ unittest
 	{
 		int draw(){ return 10; }
 	}
-	alias LazyInterface!
-	q{
+	interface Drawable
+	{
 		int draw();
-	} Drawable;
+	}
 	
 	auto n = new N();
-	auto d = Drawable(n);
+	auto d = adaptTo!Drawable(n);
 	assert(d.draw() == 10);
 }+/
 
@@ -208,20 +278,20 @@ unittest
 		int draw(){ return 20; }
 	}
 	
-	alias LazyInterface!
-	q{
+	interface Drawable
+	{
 		int draw();
-	} Drawable;
+	}
 	
 	auto a = new A();
 	auto b = new B();
 	
 	Drawable d;
-	d = Drawable(a);
+	d = adaptTo!Drawable(a);
 	assert(d.draw() == 10);
-	d = Drawable(b);
+	d = adaptTo!Drawable(b);
 	assert(d.draw() == 20);
-	d = Drawable(cast(A)b);
+	d = adaptTo!Drawable(cast(A)b);
 	assert(d.draw() == 20); 	// dynamic interface resolution
 }
 
@@ -233,13 +303,12 @@ unittest
 		int draw(){ return 10; }
 	}
 	
-	alias LazyInterface!
-	q{
+	interface S{
 		int draw();
 		static int f(){ return 20; }
-	} S;
+	}
 	
-	S s = new A();
+	S s = adaptTo!S(new A());
 	assert(s.draw() == 10);
 	assert(s.f() == 20);
 	assert(S.f() == 20);
@@ -258,17 +327,17 @@ unittest
 		int draw() immutable	{ return 50; }	// not supported
 	}
 	
-	alias LazyInterface!
-	q{
+	interface Drawable
+	{
 		int draw();
 		int draw() const;
 		int draw() shared;
 		int draw() shared const;
 		int draw() immutable;
-	} Drawable;
+	}
 	
 	auto a = new A();
-	{
+/+	{
 		Drawable d = a;
 		assert(composeDg(d.objptr, d.funtbl[0])() == 10);
 		assert(composeDg(d.objptr, d.funtbl[1])() == 20);
@@ -281,13 +350,13 @@ unittest
 	  {
 		assert(composeDg(d.objptr, d.funtbl[4])() == 50);
 	  }
-	}
+	}+/
 	{
-		auto		   d =			 Drawable (a);
-		const		  cd =			 Drawable (a);
-		shared		  sd =	  cast(shared)Drawable(a);	// workaround
-		shared const scd =	  cast(shared)Drawable(a);	// workaround
-		immutable	  id = cast(immutable)Drawable(a);	// workaround
+		auto		   d = adaptTo!Drawable(a);
+		const		  cd = adaptTo!Drawable(a);
+		shared		  sd = adaptTo!(shared(Drawable))(cast(shared)a);	// workaround
+		shared const scd = adaptTo!(shared(Drawable))(cast(shared)a);	// workaround
+		immutable	  id = adaptTo!(immutable(Drawable))(cast(immutable)a);	// workaround
 		assert(  d.draw() == 10);
 		assert( cd.draw() == 20);
 	  version(SharedTest)
@@ -326,47 +395,39 @@ unittest
 	}
 
 	{
-		static assert(!__traits(compiles, {
-			alias LazyInterface!
-			q{
-				int x = 0;
-			} Drawable;
-		}));
-	}
-	{
-		alias LazyInterface!
-		q{
+		interface Drawable1
+		{
 			int draw();
-		} Drawable;
+		}
 		
-		Drawable d = new A();
+		Drawable1 d = adaptTo!Drawable1(new A());
 		assert(d.draw() == 1);
 		
-		d = Drawable(new B());
+		d = adaptTo!Drawable1(new B());
 		assert(d.draw() == 2);
 		
-		static assert(!__traits(compiles, d = Drawable(new X())));
+		static assert(!__traits(compiles, d = adaptTo!Drawable1(new X())));
 	}
 	{
-		alias LazyInterface!
-		q{
+		interface Drawable2
+		{
 			int draw(int v);
-		} Drawable;
+		}
 		
-		Drawable d = new A();
+		Drawable2 d = adaptTo!Drawable2(new A());
 		static assert(!__traits(compiles, d.draw()));
 		assert(d.draw(8) == 16);
 	}
 	{
-		alias LazyInterface!
-		q{
+		interface Drawable3
+		{
 			int draw(int v, int n);
-		} Drawable;
+		}
 		
-		Drawable d = new A();
+		Drawable3 d = adaptTo!Drawable3(new A());
 		assert(d.draw(8, 8) == 64);
 		
-		static assert(!__traits(compiles, d = Drawable(new Y())));
+		static assert(!__traits(compiles, d = adaptTo!Drawable3(new Y())));
 	}
 }
 
