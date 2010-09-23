@@ -10,33 +10,67 @@ import std.functional;
 
 import meta_forward, meta_expand;
 
-version = SharedTest;
-version = ImmutableTest;
-
 
 private template AdaptTo(I) if( is(I == interface) )
 {
+	private template MakeSignatureTbl(T, int Mode)
+	{
+		alias TypeTuple!(__traits(allMembers, T)) Names;
+		
+		template CollectOverloadsImpl(string Name)
+		{
+			alias TypeTuple!(__traits(getVirtualFunctions, T, Name)) Overloads;
+			
+			template MakeTuples(int N)
+			{
+				static if( N < Overloads.length )
+				{
+					static if( Mode == 0 )	// identifier names
+					{
+						alias TypeTuple!(
+							Name,
+							MakeTuples!(N+1).result
+						) result;
+					}
+					static if( Mode == 1 )	// function types
+					{
+						alias TypeTuple!(
+							typeof(Overloads[N]),
+							MakeTuples!(N+1).result
+						) result;
+					}
+				}
+				else
+				{
+					alias TypeTuple!() result;
+				}
+			}
+			
+			alias MakeTuples!(0).result result;
+		}
+		template CollectOverloads(string Name)
+		{
+			alias CollectOverloadsImpl!(Name).result CollectOverloads;
+		}
+		
+		alias staticMap!(CollectOverloads, Names) result;
+	}
 	alias MakeSignatureTbl!(I, 0).result Names;
-	alias MakeSignatureTbl!(I, 3).result FnTypes;
+	alias MakeSignatureTbl!(I, 1).result FnTypes;
 	
 	bool isAllContains(T)()
 	{
-		alias MakeSignatureTbl!(I, 0).result I_Names;
-		alias MakeSignatureTbl!(I, 1).result I_FpTypes;
-		
 		alias MakeSignatureTbl!(T, 0).result T_Names;
-		alias MakeSignatureTbl!(T, 1).result T_FpTypes;
+		alias MakeSignatureTbl!(T, 1).result T_FnTypes;
 		
 		bool result = true;
-		foreach( i, name; I_Names )
+		foreach( i, name; Names )
 		{
 			
 			bool res = false;
 			foreach( j, s; T_Names )
 			{
-				if( name == s
-				 && is(ParameterTypeTuple!(I_FpTypes[i])
-					== ParameterTypeTuple!(T_FpTypes[j])) )
+				if( name == s && is(FnTypes[i] == T_FnTypes[j]) )
 				{
 					res = true;
 					break;
@@ -63,170 +97,22 @@ private template AdaptTo(I) if( is(I == interface) )
 			}
 			else
 			{
-	//			pragma(msg, FnTypes[n]);
 				enum N = n.stringof;
 				enum result = 
 					mixin(expand!q{
 						mixin Forward!(
 							FnTypes[${N}],
-							Names[${N}],	//"__${N}__",
+							Names[${N}],
 							"return obj." ~ Names[${N}] ~ "(args);"
 						);
-					//	mixin("alias __${N}__ " ~ Names[${N}] ~ ";");
 					})
 					~ MixinAll!(n+1).result;
 			}
 		}
-//		pragma(msg, MixinAll!(0).result);
 		mixin(MixinAll!(0).result);
 	}
 }
-
-
-/+
-template LazyInterfaceI(string def)
-{
-	static assert(
-		__traits(compiles, {
-			mixin("interface I { " ~ def ~ "}");
-		}),
-		"invalid interface definition");
-	mixin("interface I { " ~ def ~ "}");
-}
-
-
 /// 
-template LazyInterface(string def)
-{
-	alias LazyInterface!(LazyInterfaceI!(def).I) LazyInterface;
-}
-
-/// 
-struct LazyInterface(I) if( is(I == interface) )
-{
-protected:	// want to be private
-//	static assert(
-//		__traits(compiles, {
-//			mixin("interface I { " ~ def ~ "}");
-//		}),
-//		"invalid interface definition");
-//	mixin("interface I { " ~ def ~ "}");
-
-private:
-	alias MakeSignatureTbl!(I, 0).result Names;
-	alias MakeSignatureTbl!(I, 1).result FpTypes;
-	alias MakeSignatureTbl!(I, 2).result DgTypes;
-	alias MakeSignatureTbl!(I, 3).result FnTypes;
-	
-	void*	objptr;
-	FpTypes	funtbl;
-
-	static bool isAllContains(I, T)()
-	{
-		alias MakeSignatureTbl!(I, 0).result I_Names;
-		alias MakeSignatureTbl!(I, 1).result I_FpTypes;
-		
-		alias MakeSignatureTbl!(T, 0).result T_Names;
-		alias MakeSignatureTbl!(T, 1).result T_FpTypes;
-		
-		bool result = true;
-		foreach( i, name; I_Names )
-		{
-			
-			bool res = false;
-			foreach( j, s; T_Names )
-			{
-				if( name == s
-				 && is(ParameterTypeTuple!(I_FpTypes[i])
-					== ParameterTypeTuple!(T_FpTypes[j])) )
-				{
-					res = true;
-					break;
-				}
-			}
-			result = result && res;
-			if( !result ) break;
-		}
-		return result;
-	}
-
-
-public:
-	this(T)(T obj) if( isAllContains!(I, T)() )
-	{
-		objptr = cast(void*)obj;
-		foreach( i, name; Names )
-		{
-			static if( is(FpTypes[i] U == U*) )
-			{
-				static if( is(U == immutable) )
-				{
-					DgTypes[i] dg = mixin("&(cast(immutable)obj)." ~ name);
-				}
-				else static if( is(U == shared) && is(U == const) )
-				{
-					DgTypes[i] dg = mixin("&(cast(shared const)obj)." ~ name);
-				}
-				else static if( is(U == shared) )
-				{
-					DgTypes[i] dg = mixin("&(cast(shared)obj)." ~ name);
-				}
-				else static if( is(U == const) )
-				{
-					DgTypes[i] dg = mixin("&(cast(const)obj)." ~ name);
-				}
-				else
-				{
-					DgTypes[i] dg = mixin("&(cast(Unqual!T)obj)." ~ name);
-				}
-			}
-			funtbl[i] = dg.funcptr;
-		}
-	}
-	
-	template MixinAll(int n)
-	{
-		static if( n >= Names.length )
-		{
-			enum result = q{};
-		}
-		else
-		{
-//			pragma(msg, FnTypes[n]);
-			enum N = n.stringof;
-			enum result = 
-				mixin(expand!q{
-					mixin Forward!(
-						FnTypes[${N}],
-						"__${N}__",
-						q{ return composeDg(objptr, funtbl[${N}])(args); }
-					);
-					mixin("alias __${N}__ " ~ Names[${N}] ~ ";");
-				})
-				~ MixinAll!(n+1).result;
-		}
-	}
-//	pragma(msg, MixinAll!(0).result);
-	mixin(MixinAll!(0).result);
-	
-	static auto opDispatch(string Name, Args...)(Args args)
-	{
-		static if( __traits(compiles, mixin("I." ~ Name))
-				&& __traits(isStaticFunction, mixin("I." ~ Name)) )
-		{
-			return mixin("I." ~ Name)(args);
-		}
-		else
-		{
-			static assert(0,
-				"member '" ~ Name ~ "' not found in " ~ Names.stringof);
-		}
-	}
-
-}
-+/
-
-
 I adaptTo(I, T)(T obj) if( AdaptTo!I.isAllContains!T() )
 {
 	return new AdaptTo!I.Impl!T(obj);
@@ -292,7 +178,7 @@ unittest
 	d = adaptTo!Drawable(b);
 	assert(d.draw() == 20);
 	d = adaptTo!Drawable(cast(A)b);
-	assert(d.draw() == 20); 	// dynamic interface resolution
+	assert(d.draw() == 20);
 }
 
 
@@ -303,16 +189,15 @@ unittest
 		int draw(){ return 10; }
 	}
 	
-	interface S{
+	interface Drawable{
 		int draw();
 		static int f(){ return 20; }
 	}
 	
-	S s = adaptTo!S(new A());
-	assert(s.draw() == 10);
-	assert(s.f() == 20);
-	assert(S.f() == 20);
-	static assert(!__traits(compiles, s.g()));
+	Drawable d = adaptTo!Drawable(new A());
+	assert(d.draw() == 10);
+	assert(d.f() == 20);
+	assert(Drawable.f() == 20);
 }
 
 
@@ -322,9 +207,9 @@ unittest
 	{
 		int draw()				{ return 10; }
 		int draw() const		{ return 20; }
-		int draw() shared		{ return 30; }	// not supported
-		int draw() shared const { return 40; }	// not supported
-		int draw() immutable	{ return 50; }	// not supported
+		int draw() shared		{ return 30; }
+		int draw() shared const { return 40; }
+		int draw() immutable	{ return 50; }
 	}
 	
 	interface Drawable
@@ -336,38 +221,19 @@ unittest
 		int draw() immutable;
 	}
 	
-	auto a = new A();
-/+	{
-		Drawable d = a;
-		assert(composeDg(d.objptr, d.funtbl[0])() == 10);
-		assert(composeDg(d.objptr, d.funtbl[1])() == 20);
-	  version(SharedTest)
-	  {
-		assert(composeDg(d.objptr, d.funtbl[2])() == 30);
-		assert(composeDg(d.objptr, d.funtbl[3])() == 40);
-	  }
-	  version(ImmutableTest)
-	  {
-		assert(composeDg(d.objptr, d.funtbl[4])() == 50);
-	  }
-	}+/
+	auto  a = new A();
+	auto ia = new immutable(A)();
 	{
 		auto		   d = adaptTo!Drawable(a);
 		const		  cd = adaptTo!Drawable(a);
-		shared		  sd = adaptTo!(shared(Drawable))(cast(shared)a);	// workaround
-		shared const scd = adaptTo!(shared(Drawable))(cast(shared)a);	// workaround
-		immutable	  id = adaptTo!(immutable(Drawable))(cast(immutable)a);	// workaround
+		shared		  sd = adaptTo!(shared(Drawable))(a);
+		shared const scd = adaptTo!(shared(Drawable))(a);
+		immutable	  id = adaptTo!(immutable(Drawable))(ia);
 		assert(  d.draw() == 10);
 		assert( cd.draw() == 20);
-	  version(SharedTest)
-	  {
 		assert( sd.draw() == 30);
 		assert(scd.draw() == 40);
-	  }
-	  version(ImmutableTest)
-	  {
 		assert( id.draw() == 50);
-	  }
 	}
 }
 
@@ -430,160 +296,3 @@ unittest
 		static assert(!__traits(compiles, d = adaptTo!Drawable3(new Y())));
 	}
 }
-
-
-private template MakeSignatureTbl(T, int Mode)
-{
-	alias TypeTuple!(__traits(allMembers, T)) Names;
-	
-	template CollectOverloadsImpl(string Name)
-	{
-		alias TypeTuple!(__traits(getVirtualFunctions, T, Name)) Overloads;
-		
-		template MakeTuples(int N)
-		{
-			static if( N < Overloads.length )
-			{
-				static if( Mode == 0 )	// identifier names
-				{
-					alias TypeTuple!(
-						Name,
-						MakeTuples!(N+1).result
-					) result;
-				}
-				static if( Mode == 1 )	// function-pointer types
-				{
-					alias TypeTuple!(
-						typeof(&Overloads[N]),
-						MakeTuples!(N+1).result
-					) result;
-				}
-				static if( Mode == 2 )	// delegate types
-				{
-					alias TypeTuple!(
-						typeof({
-							typeof(&Overloads[N]) fp;
-							return toDelegate(fp);
-						}()),
-						MakeTuples!(N+1).result
-					) result;
-				}
-				static if( Mode == 3 )	// delegate types
-				{
-					alias TypeTuple!(
-						typeof(Overloads[N]),
-						MakeTuples!(N+1).result
-					) result;
-				}
-			}
-			else
-			{
-				alias TypeTuple!() result;
-			}
-		}
-		
-		alias MakeTuples!(0).result result;
-	}
-	template CollectOverloads(string Name)
-	{
-		alias CollectOverloadsImpl!(Name).result CollectOverloads;
-	}
-	
-	alias staticMap!(CollectOverloads, Names) result;
-}
-
-
-// modified from std.functional
-auto toDelegate(F)(auto ref F fp) if (isCallable!(F)) {
-
-	static if (is(F == delegate))
-	{
-		return fp;
-	}
-	else static if (is(typeof(&F.opCall) == delegate)
-				|| (is(typeof(&F.opCall) V : V*) && is(V == function)))
-	{
-		return toDelegate(&fp.opCall);
-	}
-	else
-	{
-		alias typeof(&(new DelegateFaker!(F)).doIt) DelType;
-
-		static struct DelegateFields {
-			union {
-				DelType del;
-
-				struct {
-					void* contextPtr;
-					typeof({
-						auto dg = &(new DelegateFaker!(F)).doIt;
-						return dg.funcptr;
-					}()) funcPtr;
-						// get delegate type including StorageClass Modifier
-				}
-			}
-		}
-
-		// fp is stored in the returned delegate's context pointer.
-		// The returned delegate's function pointer points to
-		// DelegateFaker.doIt.
-		DelegateFields df;
-
-		df.contextPtr = cast(void*) fp;
-
-		DelegateFaker!(F) dummy;
-		auto dummyDel = &(dummy.doIt);
-		df.funcPtr = dummyDel.funcptr;
-
-		return df.del;
-	}
-}
-
-
-/// 
-auto composeDg(T...)(T args)
-{
-	static if( T.length==1 && is(Unqual!(T[0]) X == Tuple!(void*, U), U) )
-	{
-		auto tup = args[0];
-		//alias typeof(tup.field[1]) U;
-		
-		auto ptr		= tup.field[0];
-		auto funcptr	= tup.field[1];
-		
-	}
-	else static if( T.length==2 && (
-						is(Unqual!(T[0]) X == X*) && (
-							is(X Y == const Y) ||
-							is(X Y == shared Y) ||
-							is(X Y == shared const Y) ||
-							is(X Y == immutable Y) ||
-							is(X Y == Y)
-						) && is(Y == void)
-					) &&
-					isFunctionPointer!(Unqual!(T[1])) )
-	{
-		auto ptr		= args[0];
-		auto funcptr	= args[1];
-		alias T[1] U;
-		
-	}
-	else
-	{
-		static assert(0, T.stringof);
-	}
-	
-	ReturnType!U delegate(ParameterTypeTuple!U) dg;
-	dg.ptr		= cast(void*)ptr;
-	dg.funcptr	= cast(typeof(dg.funcptr))funcptr;
-	return dg;
-}
-unittest
-{
-	int localfun(int n){ return n*10; }
-	
-	auto dg = &localfun;
-	assert(composeDg(dg.ptr, dg.funcptr)(5) == 50);
-}
-
-
