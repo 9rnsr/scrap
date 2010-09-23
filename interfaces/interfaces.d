@@ -12,16 +12,33 @@ version = SharedTest;
 //version = ImmutableTest;
 
 
-/// 
-struct LazyInterface(string def)
+template LazyInterfaceI(string def)
 {
-protected:	// want to be private
 	static assert(
 		__traits(compiles, {
 			mixin("interface I { " ~ def ~ "}");
 		}),
 		"invalid interface definition");
 	mixin("interface I { " ~ def ~ "}");
+}
+
+
+/// 
+template LazyInterface(string def)
+{
+	alias LazyInterface!(LazyInterfaceI!(def).I) LazyInterface;
+}
+
+/// 
+struct LazyInterface(I) if( is(I == interface) )
+{
+protected:	// want to be private
+//	static assert(
+//		__traits(compiles, {
+//			mixin("interface I { " ~ def ~ "}");
+//		}),
+//		"invalid interface definition");
+//	mixin("interface I { " ~ def ~ "}");
 
 private:
 	alias MakeSignatureTbl!(I, 0).result Names;
@@ -195,6 +212,29 @@ public:
 //		enum stc = 's';
 //		mixin(dispatch);
 //	}
+}
+
+
+LazyInterface!I adaptTo(I, T)(T obj)
+{
+	return LazyInterface!I(obj);
+}
+
+
+unittest
+{
+	static class C
+	{
+		int draw(){ return 10; }
+	}
+	interface Drawable
+	{
+		int draw();
+	}
+	
+	auto c = new C();
+	auto d = adaptTo!Drawable(c);
+	assert(d.draw() == 10);
 }
 
 
