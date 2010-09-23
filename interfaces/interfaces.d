@@ -69,7 +69,7 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 			{
 				enum equalTypeIndex = -1;
 			}
-			else static if( Names[n] == T_Names[k]
+			else static if( T_Names[k] == Names[n]
 					&& is(T_FnTypes[k] == FnTypes[n]) )
 			{
 				enum equalTypeIndex = k;
@@ -89,7 +89,7 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 			{
 				enum covariantTypeIndex = -1;
 			}
-			else static if( Names[n] == T_Names[k]
+			else static if( T_Names[k] == Names[n]
 					&& isCovariantWith!(T_FnTypes[k], FnTypes[n]) )
 			{
 				enum covariantTypeIndex = k;
@@ -107,6 +107,7 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 			}
 			else
 			{
+				static assert(covariantTypeIndex!n >= 0);
 				alias TypeTuple!(
 					T_FnTypes[covariantTypeIndex!n],
 					Signatures!(n+1)
@@ -116,36 +117,16 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 		alias Signatures!() Result;
 	}
 	
-	bool hasRequireMethods(T)()
+	template hasRequireMethods(T)
 	{
-		alias InterfaceSignatures!(T, 0).Result T_Names;
-		alias InterfaceSignatures!(T, 1).Result T_FnTypes;
-		
-		bool result = true;
-		foreach( i, name; Names )
-		{
-			
-			bool res = false;
-			foreach( j, s; T_Names )
-			{
-				if( name == s && isCovariantWith!(T_FnTypes[j], FnTypes[i]) )
-				{
-					res = true;
-					break;
-				}
-			}
-			result = result && res;
-			if( !result ) break;
-		}
-		return result;
+		enum hasRequireMethods = __traits(compiles, CovariantSignatures!T.Result);
 	}
 	
 	final class Impl(T) : Interface
 	{
-		alias CovariantSignatures!T.Result T_FnTypes;
-//		pragma(msg, "Impl!(", T, ") : I_FnTypes=", FnTypes, ", T_FnTypes=", T_FnTypes);
-	
 	private:
+		alias CovariantSignatures!T.Result CoTypes;
+		
 		T obj;
 		this(T o){ obj = o; }
 	
@@ -161,7 +142,7 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 				enum result = 
 					mixin(expand!q{
 						mixin Forward!(
-							T_FnTypes[${n.stringof}],	// covariant
+							CoTypes[${n.stringof}],	// covariant
 							Names[${n.stringof}],
 							"return obj." ~ Names[${n.stringof}] ~ "(args);"
 						);
@@ -169,12 +150,11 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 					~ MixinAll!(n+1).result;
 			}
 		}
-//		pragma(msg, MixinAll!(0).result);
 		mixin(MixinAll!(0).result);
 	}
 }
 /// 
-Interface adaptTo(Interface, T)(T obj) if( AdaptTo!Interface.hasRequireMethods!T() )
+Interface adaptTo(Interface, T)(T obj) if( AdaptTo!Interface.hasRequireMethods!T )
 {
 	return new AdaptTo!Interface.Impl!T(obj);
 }
@@ -361,32 +341,29 @@ unittest
 
 unittest
 {
-	static class C
-	{
-		int draw(){ return 10; }
-	}
 	interface Drawable
 	{
 		long draw();
 	}
-//	pragma(msg, isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
+	static class C
+	{
+		int draw(){ return 10; }	// covariant return types
+	}
+	static assert(isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
 	auto d = adaptTo!Drawable(new C());
 	assert(d.draw() == 10);
 }
-
-
-/+unittest
+unittest
 {
+	interface Drawable
+	{
+		int draw() ;
+	}
 	static class C
 	{
-		void fi() immutable{}
-		void fc() const{}
-		
-		void f(){}
+		int draw()const{ return 10; }	// covariant storage classes
 	}
-	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.fc), typeof(C.fi)));
-	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.fi), typeof(C.fc)));
-	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.f), typeof(C.fc)));
-	pragma(msg, "covariant? ", isCovariantWith!(typeof(C.fc), typeof(C.f)));
-}+/
-
+	static assert(isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
+	auto d = adaptTo!Drawable(new C());
+	assert(d.draw() == 10);
+}
