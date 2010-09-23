@@ -8,6 +8,8 @@ module interfaces;
 import std.traits, std.typecons, std.typetuple;
 import std.functional;
 
+import meta_forward;
+
 version = SharedTest;
 //version = ImmutableTest;
 
@@ -234,6 +236,7 @@ unittest
 	
 	auto c = new C();
 	auto d = adaptTo!Drawable(c);
+//	Drawable d = adaptTo!Drawable(c);
 	assert(d.draw() == 10);
 }
 
