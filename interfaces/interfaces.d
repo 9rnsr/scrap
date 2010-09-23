@@ -8,7 +8,7 @@ module interfaces;
 import std.traits, std.typecons, std.typetuple;
 import std.functional;
 
-import meta_forward;
+import meta_forward, meta_expand;
 
 version = SharedTest;
 //version = ImmutableTest;
@@ -46,6 +46,7 @@ private:
 	alias MakeSignatureTbl!(I, 0).result Names;
 	alias MakeSignatureTbl!(I, 1).result FpTypes;
 	alias MakeSignatureTbl!(I, 2).result DgTypes;
+	alias MakeSignatureTbl!(I, 3).result FnTypes;
 	
 	void*	objptr;
 	FpTypes	funtbl;
@@ -164,6 +165,31 @@ public:
 		}
 	}
 	
+	template MixinAll(int n)
+	{
+		static if( n >= Names.length )
+		{
+			enum result = q{};
+		}
+		else
+		{
+//			pragma(msg, FnTypes[n]);
+			enum N = n.stringof;
+			enum result = 
+				mixin(expand!q{
+					mixin Forward!(
+						FnTypes[${N}],
+						"__${N}__",
+						q{ return composeDg(objptr, funtbl[${N}])(args); }
+					);
+					mixin("alias __${N}__ " ~ Names[${N}] ~ ";");
+				})
+				~ MixinAll!(n+1).result;
+		}
+	}
+//	pragma(msg, MixinAll!(0).result);
+	mixin(MixinAll!(0).result);
+	
 	private enum dispatch =
 	q{
 		enum i = Sig2Idx!(stc, Name, Args).result;
@@ -182,8 +208,7 @@ public:
 				"member '" ~ Name ~ "' not found in " ~ Names.stringof);
 		}
 	};
-	
-	auto opDispatch(string Name, Args...)(Args args)
+/+	auto opDispatch(string Name, Args...)(Args args)
 	{
 		enum stc = "";
 		mixin(dispatch);
@@ -208,12 +233,21 @@ public:
 		enum stc = "y";
 		mixin(dispatch);
 	}
++/
+	static auto opDispatch(string Name, Args...)(Args args)
+	{
+		static if( __traits(compiles, mixin("I." ~ Name))
+				&& __traits(isStaticFunction, mixin("I." ~ Name)) )
+		{
+			return mixin("I." ~ Name)(args);
+		}
+		else
+		{
+			static assert(0,
+				"member '" ~ Name ~ "' not found in " ~ Names.stringof);
+		}
+	}
 
-//	static auto opDispatch(string Name, Args...)(Args args)
-//	{
-//		enum stc = 's';
-//		mixin(dispatch);
-//	}
 }
 
 
@@ -303,7 +337,7 @@ unittest
 	S s = new A();
 	assert(s.draw() == 10);
 	assert(s.f() == 20);
-//	assert(S.f() == 20);	// static opDispatch not allowed ?
+	assert(S.f() == 20);
 	static assert(!__traits(compiles, s.g()));
 }
 
@@ -468,6 +502,13 @@ private template MakeSignatureTbl(T, int Mode)
 						MakeTuples!(N+1).result
 					) result;
 				}
+				static if( Mode == 3 )	// delegate types
+				{
+					alias TypeTuple!(
+						typeof(Overloads[N]),
+						MakeTuples!(N+1).result
+					) result;
+				}
 			}
 			else
 			{
@@ -545,8 +586,16 @@ auto composeDg(T...)(T args)
 		auto funcptr	= tup.field[1];
 		
 	}
-	else static if( T.length==2 && is(Unqual!(T[0]) == void*)
-					&& isFunctionPointer!(Unqual!(T[1])) )
+	else static if( T.length==2 && (
+						is(Unqual!(T[0]) X == X*) && (
+							is(X Y == const Y) ||
+							is(X Y == shared Y) ||
+							is(X Y == shared const Y) ||
+							is(X Y == immutable Y) ||
+							is(X Y == Y)
+						) && is(Y == void)
+					) &&
+					isFunctionPointer!(Unqual!(T[1])) )
 	{
 		auto ptr		= args[0];
 		auto funcptr	= args[1];
@@ -559,7 +608,7 @@ auto composeDg(T...)(T args)
 	}
 	
 	ReturnType!U delegate(ParameterTypeTuple!U) dg;
-	dg.ptr		= ptr;
+	dg.ptr		= cast(void*)ptr;
 	dg.funcptr	= cast(typeof(dg.funcptr))funcptr;
 	return dg;
 }
