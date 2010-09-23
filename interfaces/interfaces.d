@@ -51,57 +51,6 @@ private:
 	void*	objptr;
 	FpTypes	funtbl;
 
-	static bool startWith(string s, string pattern) pure
-	{
-		return s.length >= pattern.length && s[0..pattern.length] == pattern;
-	}
-	template StorageClassCheck(string mangleof)
-	{
-		static if( startWith(mangleof, "PF") )
-		{
-			enum StorageClassCheck = "";	// mutable
-		}
-		static if( startWith(mangleof, "PxF") )
-		{
-			enum StorageClassCheck = "x";	// const
-		}
-		static if( startWith(mangleof, "POF") )
-		{
-			enum StorageClassCheck = "O";	// shared
-		}
-		static if( startWith(mangleof, "POxF") )
-		{
-			enum StorageClassCheck = "Ox";	// shared const
-		}
-		static if( startWith(mangleof, "PyF") )
-		{
-			enum StorageClassCheck = "y";	// immutable
-		}
-	}
-	template Sig2Idx(string stc, string Name, Args...)
-	{
-		template Impl(int N, string Name, Args...)
-		{
-			static if( N < Names.length )
-			{
-				static if( Names[N] == Name
-						&& is(ParameterTypeTuple!(FpTypes[N]) == Args)
-						&& stc == StorageClassCheck!(FpTypes[N].mangleof) )
-				{
-					enum result = N;
-				}
-				else
-				{
-					enum result = Impl!(N+1, Name, Args).result;
-				}
-			}
-			else
-			{
-				enum result = -1;
-			}
-		}
-		enum result = Impl!(0, Name, Args).result;
-	}
 	static bool isAllContains(I, T)()
 	{
 		alias MakeSignatureTbl!(I, 0).result I_Names;
@@ -190,50 +139,6 @@ public:
 //	pragma(msg, MixinAll!(0).result);
 	mixin(MixinAll!(0).result);
 	
-	private enum dispatch =
-	q{
-		enum i = Sig2Idx!(stc, Name, Args).result;
-		static if( i >= 0 )
-		{
-			return composeDg(cast(void*)objptr, funtbl[i])(args);
-		}
-		else static if( __traits(compiles, mixin("I." ~ Name))
-					  && __traits(isStaticFunction, mixin("I." ~ Name)) )
-		{
-			return mixin("I." ~ Name)(args);
-		}
-		else
-		{
-			static assert(0,
-				"member '" ~ Name ~ "' not found in " ~ Names.stringof);
-		}
-	};
-/+	auto opDispatch(string Name, Args...)(Args args)
-	{
-		enum stc = "";
-		mixin(dispatch);
-	}
-	auto opDispatch(string Name, Args...)(Args args) const
-	{
-		enum stc = "x";
-		mixin(dispatch);
-	}
-	auto opDispatch(string Name, Args...)(Args args) shared
-	{
-		enum stc = "O";
-		mixin(dispatch);
-	}
-	auto opDispatch(string Name, Args...)(Args args) shared const
-	{
-		enum stc = "Ox";
-		mixin(dispatch);
-	}
-	auto opDispatch(string Name, Args...)(Args args) immutable
-	{
-		enum stc = "y";
-		mixin(dispatch);
-	}
-+/
 	static auto opDispatch(string Name, Args...)(Args args)
 	{
 		static if( __traits(compiles, mixin("I." ~ Name))
