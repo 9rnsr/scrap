@@ -11,9 +11,9 @@ import std.functional;
 import meta_forward, meta_expand;
 
 
-private template AdaptTo(I) if( is(I == interface) )
+private template AdaptTo(Interface) if( is(Interface == interface) )
 {
-	private template MakeSignatureTbl(T, int Mode)
+	private template MakeSignatureTbl(T, int mode)
 	{
 		alias TypeTuple!(__traits(allMembers, T)) Names;
 		
@@ -25,43 +25,43 @@ private template AdaptTo(I) if( is(I == interface) )
 			{
 				static if( N < Overloads.length )
 				{
-					static if( Mode == 0 )	// identifier names
+					static if( mode == 0 )	// identifier names
 					{
 						alias TypeTuple!(
 							Name,
-							MakeTuples!(N+1).result
-						) result;
+							MakeTuples!(N+1).Result
+						) Result;
 					}
-					static if( Mode == 1 )	// function types
+					static if( mode == 1 )	// function types
 					{
 						alias TypeTuple!(
 							typeof(Overloads[N]),
-							MakeTuples!(N+1).result
-						) result;
+							MakeTuples!(N+1).Result
+						) Result;
 					}
 				}
 				else
 				{
-					alias TypeTuple!() result;
+					alias TypeTuple!() Result;
 				}
 			}
 			
-			alias MakeTuples!(0).result result;
+			alias MakeTuples!(0).Result Result;
 		}
 		template CollectOverloads(string Name)
 		{
-			alias CollectOverloadsImpl!(Name).result CollectOverloads;
+			alias CollectOverloadsImpl!(Name).Result CollectOverloads;
 		}
 		
-		alias staticMap!(CollectOverloads, Names) result;
+		alias staticMap!(CollectOverloads, Names) Result;
 	}
-	alias MakeSignatureTbl!(I, 0).result Names;
-	alias MakeSignatureTbl!(I, 1).result FnTypes;
+	alias MakeSignatureTbl!(Interface, 0).Result Names;
+	alias MakeSignatureTbl!(Interface, 1).Result FnTypes;
 	
 	bool isAllContains(T)()
 	{
-		alias MakeSignatureTbl!(T, 0).result T_Names;
-		alias MakeSignatureTbl!(T, 1).result T_FnTypes;
+		alias MakeSignatureTbl!(T, 0).Result T_Names;
+		alias MakeSignatureTbl!(T, 1).Result T_FnTypes;
 		
 		bool result = true;
 		foreach( i, name; Names )
@@ -82,7 +82,7 @@ private template AdaptTo(I) if( is(I == interface) )
 		return result;
 	}
 	
-	final class Impl(T) : I
+	final class Impl(T) : Interface
 	{
 	private:
 		T obj;
@@ -97,13 +97,12 @@ private template AdaptTo(I) if( is(I == interface) )
 			}
 			else
 			{
-				enum N = n.stringof;
 				enum result = 
 					mixin(expand!q{
 						mixin Forward!(
-							FnTypes[${N}],
-							Names[${N}],
-							"return obj." ~ Names[${N}] ~ "(args);"
+							FnTypes[${n.stringof}],
+							Names[${n.stringof}],
+							"return obj." ~ Names[${n.stringof}] ~ "(args);"
 						);
 					})
 					~ MixinAll!(n+1).result;
@@ -113,9 +112,9 @@ private template AdaptTo(I) if( is(I == interface) )
 	}
 }
 /// 
-I adaptTo(I, T)(T obj) if( AdaptTo!I.isAllContains!T() )
+Interface adaptTo(Interface, T)(T obj) if( AdaptTo!Interface.isAllContains!T() )
 {
-	return new AdaptTo!I.Impl!T(obj);
+	return new AdaptTo!Interface.Impl!T(obj);
 }
 
 
@@ -296,3 +295,5 @@ unittest
 		static assert(!__traits(compiles, d = adaptTo!Drawable3(new Y())));
 	}
 }
+
+
