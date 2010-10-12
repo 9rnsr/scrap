@@ -10,58 +10,19 @@ import std.functional;
 
 import meta_forward, meta_expand;
 
+import meta;
+alias meta.staticMap staticMap;
+
 
 private template AdaptTo(Interface) if( is(Interface == interface) )
 {
-	private template InterfaceSignatures(T, int mode)
-	{
-		alias TypeTuple!(__traits(allMembers, T)) Names;
-		
-		template CollectOverloadsImpl(string Name)
-		{
-			alias TypeTuple!(__traits(getVirtualFunctions, T, Name)) Overloads;
-			
-			template MakeTuples(int n)
-			{
-				static if( n >= Overloads.length )
-				{
-					alias TypeTuple!() Result;
-				}
-				else
-				{
-					static if( mode == 0 )	// identifier names
-					{
-						alias TypeTuple!(
-							Name,
-							MakeTuples!(n+1).Result
-						) Result;
-					}
-					static if( mode == 1 )	// function types
-					{
-						alias TypeTuple!(
-							typeof(Overloads[n]),
-							MakeTuples!(n+1).Result
-						) Result;
-					}
-				}
-			}
-			
-			alias MakeTuples!(0).Result Result;
-		}
-		template CollectOverloads(string Name)
-		{
-			alias CollectOverloadsImpl!(Name).Result CollectOverloads;
-		}
-		
-		alias staticMap!(CollectOverloads, Names) Result;
-	}
-	alias InterfaceSignatures!(Interface, 0).Result Names;
-	alias InterfaceSignatures!(Interface, 1).Result FnTypes;
+	alias staticMap!(Identifier, MemberFunctionsOf!Interface) Names;
+	alias staticMap!(TypeOf,     MemberFunctionsOf!Interface) FnTypes;
 	
 	template CovariantSignatures(T)
 	{
-		alias InterfaceSignatures!(T, 0).Result T_Names;
-		alias InterfaceSignatures!(T, 1).Result T_FnTypes;
+		alias staticMap!(Identifier, MemberFunctionsOf!T) T_Names;
+		alias staticMap!(TypeOf,     MemberFunctionsOf!T) T_FnTypes;
 		
 		private template equalTypeIndex(int n, int k=0)
 		{
@@ -103,15 +64,21 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 		{
 			static if( n >= Names.length )
 			{
-				alias TypeTuple!() Signatures;
+				alias Sequence!() Signatures;
 			}
 			else
 			{
-				static assert(covariantTypeIndex!n >= 0);
-				alias TypeTuple!(
-					T_FnTypes[covariantTypeIndex!n],
-					Signatures!(n+1)
-				) Signatures;
+				static if( covariantTypeIndex!n >= 0 )
+				{
+					alias Sequence!(
+						T_FnTypes[covariantTypeIndex!n],
+						Signatures!(n+1)
+					) Signatures;
+				}
+				else
+				{
+					static assert(0);
+				}
 			}
 		}
 		alias Signatures!() Result;
