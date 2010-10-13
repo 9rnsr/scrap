@@ -1,4 +1,4 @@
-/**
+﻿/**
 	original of this module is by rsinfu (http://gist.github.com/598659)
 */
 module meta;
@@ -1474,7 +1474,7 @@ template isInterface(T)
 // Sequences
 //----------------------------------------------------------------------------//
 
-//version = Fixed_Issue4217;
+version = Fixed_Issue4217;
 
 version(Fixed_Issue4217)
 {
@@ -1485,26 +1485,46 @@ version(Fixed_Issue4217)
 }
 else
 {
-	private template VirtualFunctionsOfImpl(T, string name)
-	{
-		alias Sequence!(__traits(getVirtualFunctions, T, name)) Overloads;
-		
-		template MakeSeq(int n)
-		{
-			static if( n >= Sequence!(__traits(getVirtualFunctions, T, name)).length )
-			{
-				alias Sequence!() Result;
-			}
-			else
-			{
-				alias Sequence!(
-					Sequence!(__traits(getVirtualFunctions, T, name))[n],
-					MakeSeq!(n+1).Result
-				) Result;
-			}
-		}
-		alias MakeSeq!(0).Result Result;
-	}
+	// issue4217が修正されないと、シンボルのシーケンスの要素は正しく比較できない
+	// 下のworkaroundは間違い
+
+//	private template VirtualFunctionsOfImpl(T, string name)
+//	{
+//		alias Sequence!(__traits(getVirtualFunctions, T, name)) Overloads;
+//		//pragma(msg, ">> ", typeof(Overloads));
+//		
+//		template MakeSeq(int n)
+//		{
+//			static if( n >= Overloads.length )
+//			{
+//				alias Sequence!() Result;
+//			}
+//			else
+//			{
+//				//pragma(msg, ". ", typeof(Overloads[n]));
+//				alias Overloads[n] Symbol;
+//				
+//				alias Sequence!(
+//					Symbol,//Overloads[n],
+//					MakeSeq!(n+1).Result
+//				) Result;
+//			}
+//		}
+//		alias MakeSeq!(0).Result Result;
+//	}
+//	version(unittest)
+//	{
+//		interface I
+//		{
+//			int f() const;
+//			int f() immutable;
+//		}
+//		alias VirtualFunctionsOfImpl!(I, "f").Result F;
+//		//pragma(msg, TypeOf!(F[0]), ", ", typeof(F[0]));
+//		static assert(is(TypeOf!(F[0]) == typeof(F[0])));
+//		//pragma(msg, TypeOf!(F[1]), ", ", typeof(F[1]));
+//		static assert(is(TypeOf!(F[1]) == typeof(F[1])));
+//	}
 }
 /**
 	does not reduce overloads
