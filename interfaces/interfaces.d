@@ -12,17 +12,18 @@ import meta_forward, meta_expand;
 
 import meta;
 alias meta.staticMap staticMap;
+alias meta.isSame isSame;
 
 
 private template AdaptTo(Interface) if( is(Interface == interface) )
 {
-	alias staticMap!(Identifier, MemberFunctionsOf!Interface) Names;
-	alias staticMap!(TypeOf,     MemberFunctionsOf!Interface) FnTypes;
+	alias staticMap!(Identifier, VirtualFunctionsOf!Interface) Names;
+	alias staticMap!(TypeOf,     VirtualFunctionsOf!Interface) FnTypes;
 	
 	template CovariantSignatures(T)
 	{
-		alias staticMap!(Identifier, MemberFunctionsOf!T) T_Names;
-		alias staticMap!(TypeOf,     MemberFunctionsOf!T) T_FnTypes;
+		alias staticMap!(Identifier, VirtualFunctionsOf!T) T_Names;
+		alias staticMap!(TypeOf,     VirtualFunctionsOf!T) T_FnTypes;
 		
 		private template equalTypeIndex(int n, int k=0)
 		{
@@ -30,8 +31,8 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 			{
 				enum equalTypeIndex = -1;
 			}
-			else static if( T_Names[k] == Names[n]
-					&& is(T_FnTypes[k] == FnTypes[n]) )
+			else static if( isSame!(T_Names  [k], Names  [n])
+						 && isSame!(T_FnTypes[k], FnTypes[n]) )
 			{
 				enum equalTypeIndex = k;
 			}
@@ -50,8 +51,8 @@ private template AdaptTo(Interface) if( is(Interface == interface) )
 			{
 				enum covariantTypeIndex = -1;
 			}
-			else static if( T_Names[k] == Names[n]
-					&& isCovariantWith!(T_FnTypes[k], FnTypes[n]) )
+			else static if( isSame!(T_Names  [k], Names  [n])
+				&& isCovariantWith!(T_FnTypes[k], FnTypes[n]) )
 			{
 				enum covariantTypeIndex = k;
 			}

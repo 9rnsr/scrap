@@ -1215,6 +1215,16 @@ template Instantiate(alias templat)
 
 	/**
 	 */
+	template Returns(string name)
+	{
+		template Returns(args...)
+		{
+			mixin("alias templat!args." ~ name ~ " Returns;");
+		}
+	}
+
+	/**
+	 */
 	template bindFront(bind...)
 	{
 		template bindFront(args...)
@@ -1427,9 +1437,23 @@ template StringOf(T)
 
 /**
  */
+template LengthOf(T...)
+{
+	enum size_t LengthOf = T.length;
+}
+
+
+/**
+	alternation of built-in __traits(identifier, A)
+ */
 template Identifier(alias A)
 {
 	enum Identifier = __traits(identifier, A);
+}
+unittest
+{
+	int v;
+	static assert(Identifier!v == __traits(identifier, v));
 }
 
 
@@ -1442,62 +1466,66 @@ template isInterface(T)
 
 
 /**
+	alternation of built-in __traits(getVirtualFunctions, T, name)
  */
-template VirtualFunctionsOf(T, string name)
-{
-	alias z!(__traits(getVirtualFunctions, T, name)) VirtualFunctionsOf;
-}
 
 
 //----------------------------------------------------------------------------//
 // Sequences
 //----------------------------------------------------------------------------//
 
-version = Fixed_Issue4217;
+//version = Fixed_Issue4217;
 
-version(Fixed_Issue4217){}else
-private template MemberFunctionsOfImplImpl(T, string name)
+version(Fixed_Issue4217)
 {
-	alias Sequence!(__traits(getVirtualFunctions, T, name)) Overloads;
-	
-	template MakeSeq(int n)
+	template VirtualFunctionsOfImpl(T, string name)
 	{
-		static if( n >= Sequence!(__traits(getVirtualFunctions, T, name)).length )
-		{
-			alias Sequence!() Result;
-		}
-		else
-		{
-			alias Sequence!(
-				Sequence!(__traits(getVirtualFunctions, T, name))[n],
-				MakeSeq!(n+1).Result
-			) Result;
-		}
+		alias Sequence!(__traits(getVirtualFunctions, T, name)) Result;
 	}
-	alias MakeSeq!(0).Result Result;
 }
-private template MemberFunctionsOfImpl(T)
+else
 {
-	template MemberFunctionsOfImpl(string name)
+	private template VirtualFunctionsOfImpl(T, string name)
 	{
-		version(Fixed_Issue4217)
+		alias Sequence!(__traits(getVirtualFunctions, T, name)) Overloads;
+		
+		template MakeSeq(int n)
 		{
-			alias VirtualFunctionsOf!(T, name) MemberFunctionsOfImpl;
+			static if( n >= Sequence!(__traits(getVirtualFunctions, T, name)).length )
+			{
+				alias Sequence!() Result;
+			}
+			else
+			{
+				alias Sequence!(
+					Sequence!(__traits(getVirtualFunctions, T, name))[n],
+					MakeSeq!(n+1).Result
+				) Result;
+			}
 		}
-		else
-		{
-			alias MemberFunctionsOfImplImpl!(T, name).Result MemberFunctionsOfImpl;
-		}
+		alias MakeSeq!(0).Result Result;
 	}
 }
 /**
 	does not reduce overloads
+	Parameter:
+		name :	specified member name.
+				if it is empty string, all of virtual-functions on T returns.
  */
-template MemberFunctionsOf(T)
+template VirtualFunctionsOf(T, string name="")
 {
-	alias staticMap!(
-		MemberFunctionsOfImpl!T,
-		Sequence!(__traits(allMembers, T))
-	) MemberFunctionsOf;
+	static if( name == "" )
+	{
+		alias staticMap!(
+			Instantiate!(
+				Instantiate!VirtualFunctionsOfImpl.bindFront!T
+			).Returns!"Result",
+			Sequence!(__traits(allMembers, T))
+		) VirtualFunctionsOf;
+	}
+	else
+	{
+		alias VirtualFunctionsOfImpl!(T, name).Result VirtualFunctionsOf;
+	}
 }
 
