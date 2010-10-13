@@ -226,11 +226,11 @@ template staticIndexOf(E, seq...)
 {
 	static if (staticFind!(E, seq).length == 0)
 	{
-		enum sizediff_t staticIndexOf = -1;
+		enum /*sizediff_t*/ staticIndexOf = -1;
 	}
 	else
 	{
-		enum sizediff_t staticIndexOf = (seq.length -
+		enum /*sizediff_t*/ staticIndexOf = (seq.length -
 										 staticFind!(E, seq).length);
 	}
 }
@@ -240,11 +240,11 @@ template staticIndexOf(alias E, seq...)
 {
 	static if (staticFind!(E, seq).length == 0)
 	{
-		enum sizediff_t staticIndexOf = -1;
+		enum /*sizediff_t*/ staticIndexOf = -1;
 	}
 	else
 	{
-		enum sizediff_t staticIndexOf = (seq.length -
+		enum /*sizediff_t*/ staticIndexOf = (seq.length -
 										 staticFind!(E, seq).length);
 	}
 }
@@ -864,8 +864,14 @@ private
 	}
 }
 
-unittest
+version(unittest)
 {
+	//pragma(msg, staticCombinations!(3, int, long, float, double));
+//	static assert(
+//		is(staticCombinations!(3, int, long, float, double)
+//			== Sequence!(
+//				Wrap!(int,long,float), Wrap!(int,long,double),
+//				Wrap!(int,float,double), Wrap!(long,float,double))));
 }
 
 
@@ -905,8 +911,9 @@ private
 	}
 }
 
-unittest
+version(unittest)
 {
+	//pragma(msg, staticCartesian!(Wrap!(int, long), Wrap!(float, double)));
 }
 
 
@@ -1450,6 +1457,8 @@ template Identifier(alias A)
 {
 	enum Identifier = __traits(identifier, A);
 }
+/// ditto
+alias Identifier NameOf;
 unittest
 {
 	int v;
@@ -1610,5 +1619,24 @@ template VirtualFunctionsOf(T, string name="")
 	{
 		alias VirtualFunctionsOfImpl!(T, name).Result VirtualFunctionsOf;
 	}
+}
+
+
+private template staticIndexOfIfImpl(alias pred, seq...)
+{
+	enum len = seq.length;
+	enum len2 = staticFindIf!(pred, seq).length;
+	static if( len2 == 0 )
+	{
+		enum int Result = -1;
+	}
+	else
+	{
+		enum int Result = len - len2;
+	}
+}
+template staticIndexOfIf(alias pred, seq...)
+{
+	enum staticIndexOfIf = staticIndexOfIfImpl!(pred, seq).Result;
 }
 

@@ -17,72 +17,57 @@ alias meta.isSame isSame;
 
 private template AdaptTo(Interface) if( isInterface!Interface )
 {
-	alias staticMap!(Identifier, VirtualFunctionsOf!Interface) Names;
-	alias staticMap!(TypeOf,     VirtualFunctionsOf!Interface) FnTypes;
-	
+	alias VirtualFunctionsOf!Interface Idents;
+
 	template CovariantSignatures(T)
 	{
-		alias staticMap!(Identifier, VirtualFunctionsOf!T) T_Names;
-		alias staticMap!(TypeOf,     VirtualFunctionsOf!T) T_FnTypes;
+		alias VirtualFunctionsOf!T T_Idents;
 		
-		private template equalTypeIndex(int n, int k=0)
+		template isExactMatch(alias a)
 		{
-			static if( k >= T_Names.length )
+			enum isExactMatch =
+					 isSame!(NameOf!(a.Expand[0]), NameOf!(a.Expand[1]))
+				  && isSame!(TypeOf!(a.Expand[0]), TypeOf!(a.Expand[1]));
+		//	pragma(msg, ". (", NameOf!(a.Expand[0]), " / ", NameOf!(a.Expand[1]),
+		//			 ") && (", TypeOf!(a.Expand[0]), " / ", TypeOf!(a.Expand[1]), ") -> ", isExactMatch);
+		}
+		template isCovariantMatch(alias a)
+		{
+			enum isCovariantMatch =
+							 isSame!(NameOf!(a.Expand[0]), NameOf!(a.Expand[1]))
+				 && isCovariantWith!(TypeOf!(a.Expand[0]), TypeOf!(a.Expand[1]));
+		//	pragma(msg, ". (", NameOf!(a.Expand[0]), " / ", NameOf!(a.Expand[1]),
+		//			 ") && (", TypeOf!(a.Expand[0]), " / ", TypeOf!(a.Expand[1]), ") -> ", isCovariantMatch);
+		}
+		
+		template CovariantIndexWith(size_t i)
+		{
+			alias staticCartesian!(Wrap!T_Idents, Wrap!(Idents[i])) Cartesian;
+			
+			enum int j = staticIndexOfIf!(isExactMatch, Cartesian);
+			static if( j == -1 )
 			{
-				enum equalTypeIndex = -1;
-			}
-			else static if( isSame!(T_Names  [k], Names  [n])
-						 && isSame!(T_FnTypes[k], FnTypes[n]) )
-			{
-				enum equalTypeIndex = k;
+				enum int k = staticIndexOfIf!(isCovariantMatch, Cartesian);
 			}
 			else
 			{
-				enum equalTypeIndex = equalTypeIndex!(n, k+1);
+				enum int k = j;
 			}
-		}
-		private template covariantTypeIndex(int n, int k=0)
-		{
-			static if( equalTypeIndex!n != -1 )
+			
+			static if( k == -1 )
 			{
-				enum covariantTypeIndex = equalTypeIndex!n;
-			}
-			else static if( k >= T_Names.length )
-			{
-				enum covariantTypeIndex = -1;
-			}
-			else static if( isSame!(T_Names  [k], Names  [n])
-				&& isCovariantWith!(T_FnTypes[k], FnTypes[n]) )
-			{
-				enum covariantTypeIndex = k;
+				alias Sequence!() Result;
 			}
 			else
 			{
-				enum covariantTypeIndex = covariantTypeIndex!(n, k+1);
+				alias Sequence!(TypeOf!(T_Idents[k])) Result;
 			}
 		}
-		template Signatures(int n=0)
-		{
-			static if( n >= Names.length )
-			{
-				alias Sequence!() Signatures;
-			}
-			else
-			{
-				static if( covariantTypeIndex!n >= 0 )
-				{
-					alias Sequence!(
-						T_FnTypes[covariantTypeIndex!n],
-						Signatures!(n+1)
-					) Signatures;
-				}
-				else
-				{
-					static assert(0);
-				}
-			}
-		}
-		alias Signatures!() Result;
+		enum Idents_length = Idents.length;		//workaround
+		alias staticMap!(
+			Instantiate!CovariantIndexWith.Returns!"Result",
+			staticIota!(0, Idents_length)
+		) Result;
 	}
 	
 	template hasRequireMethods(T)
@@ -101,7 +86,7 @@ private template AdaptTo(Interface) if( isInterface!Interface )
 	public:
 		template MixinAll(int n)
 		{
-			static if( n >= Names.length )
+			static if( n >= Idents.length )
 			{
 				enum result = q{};
 			}
@@ -111,8 +96,8 @@ private template AdaptTo(Interface) if( isInterface!Interface )
 					mixin(expand!q{
 						mixin Forward!(
 							CoTypes[${n.stringof}],	// covariant
-							Names[${n.stringof}],
-							"return obj." ~ Names[${n.stringof}] ~ "(args);"
+							NameOf!(Idents[${n.stringof}]),
+							"return obj." ~ NameOf!(Idents[${n.stringof}]) ~ "(args);"
 						);
 					})
 					~ MixinAll!(n+1).result;
