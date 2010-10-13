@@ -1640,3 +1640,28 @@ template staticIndexOfIf(alias pred, seq...)
 	enum staticIndexOfIf = staticIndexOfIfImpl!(pred, seq).Result;
 }
 
+
+
+/**
+	both of template-mixin or string-mixin
+ */
+template mixinAll(mixins...)
+{
+	static if (mixins.length == 1)
+	{
+		static if (is(typeof(mixins[0]) == string))
+		{
+			mixin(mixins[0]);
+		}
+		else
+		{
+			alias mixins[0] it;
+			mixin it;
+		}
+	}
+	else static if (mixins.length >= 2)
+	{
+		mixin mixinAll!(mixins[ 0 .. $/2]);
+		mixin mixinAll!(mixins[$/2 .. $ ]);
+	}
+}

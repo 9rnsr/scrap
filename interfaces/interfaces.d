@@ -20,6 +20,7 @@ private template AdaptTo(Interfaces...)
 	if( allSatisfy!(isInterface, Interfaces) )
 {
 	alias staticUniq!(staticMap!(VirtualFunctionsOf, Interfaces)) Idents;
+	enum Idents_length = Idents.length;		//workaround
 
 	template CovariantSignatures(T)
 	{
@@ -30,16 +31,12 @@ private template AdaptTo(Interfaces...)
 			enum isExactMatch =
 					 isSame!(NameOf!(a.Expand[0]), NameOf!(a.Expand[1]))
 				  && isSame!(TypeOf!(a.Expand[0]), TypeOf!(a.Expand[1]));
-		//	pragma(msg, ". (", NameOf!(a.Expand[0]), " / ", NameOf!(a.Expand[1]),
-		//			 ") && (", TypeOf!(a.Expand[0]), " / ", TypeOf!(a.Expand[1]), ") -> ", isExactMatch);
 		}
 		template isCovariantMatch(alias a)
 		{
 			enum isCovariantMatch =
 							 isSame!(NameOf!(a.Expand[0]), NameOf!(a.Expand[1]))
 				 && isCovariantWith!(TypeOf!(a.Expand[0]), TypeOf!(a.Expand[1]));
-		//	pragma(msg, ". (", NameOf!(a.Expand[0]), " / ", NameOf!(a.Expand[1]),
-		//			 ") && (", TypeOf!(a.Expand[0]), " / ", TypeOf!(a.Expand[1]), ") -> ", isCovariantMatch);
 		}
 		
 		template CovariantIndexWith(size_t i)
@@ -65,7 +62,6 @@ private template AdaptTo(Interfaces...)
 				alias Sequence!(TypeOf!(T_Idents[k])) Result;
 			}
 		}
-		enum Idents_length = Idents.length;		//workaround
 		alias staticMap!(
 			Instantiate!CovariantIndexWith.Returns!"Result",
 			staticIota!(0, Idents_length)
@@ -74,7 +70,8 @@ private template AdaptTo(Interfaces...)
 	
 	template hasRequireMethods(T)
 	{
-		enum hasRequireMethods = __traits(compiles, CovariantSignatures!T.Result);
+		enum hasRequireMethods = 
+			CovariantSignatures!T.Result.length == Idents.length;
 	}
 	
 	final class Impl(T) : Interfaces
@@ -86,26 +83,20 @@ private template AdaptTo(Interfaces...)
 		this(T o){ obj = o; }
 	
 	public:
-		template MixinAll(int n)
+		template generateFun(string n)
 		{
-			static if( n >= Idents.length )
-			{
-				enum result = q{};
-			}
-			else
-			{
-				enum result = 
-					mixin(expand!q{
-						mixin Forward!(
-							CoTypes[${n.stringof}],	// covariant
-							NameOf!(Idents[${n.stringof}]),
-							"return obj." ~ NameOf!(Idents[${n.stringof}]) ~ "(args);"
-						);
-					})
-					~ MixinAll!(n+1).result;
-			}
+			enum generateFun = mixin(expand!q{
+				mixin Forward!(
+					CoTypes[${n}],	// covariant
+					NameOf!(Idents[${n}]),
+					"return obj." ~ NameOf!(Idents[${n}]) ~ "(args);"
+				);
+			});
 		}
-		mixin(MixinAll!(0).result);
+		mixin mixinAll!(
+			staticMap!(
+				generateFun,
+				staticMap!(StringOf, staticIota!(0, Idents_length))));
 	}
 }
 /// 
