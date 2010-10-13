@@ -15,7 +15,7 @@ alias meta.staticMap staticMap;
 alias meta.isSame isSame;
 
 
-private template AdaptTo(Interface) if( is(Interface == interface) )
+private template AdaptTo(Interface) if( isInterface!Interface )
 {
 	alias staticMap!(Identifier, VirtualFunctionsOf!Interface) Names;
 	alias staticMap!(TypeOf,     VirtualFunctionsOf!Interface) FnTypes;

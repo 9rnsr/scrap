@@ -1412,7 +1412,7 @@ unittest
 
 
 //----------------------------------------------------------------------------//
-// Predicates
+// Filtering Predicates
 //----------------------------------------------------------------------------//
 /**
  */
@@ -1457,6 +1457,33 @@ unittest
 }
 
 
+//----------------------------------------------------------------------------//
+// Conditional Predicates
+//----------------------------------------------------------------------------//
+/**
+ */
+template isStruct(T)
+{
+	enum isStruct= is(T == struct);
+}
+
+
+/**
+ */
+template isUnion(T)
+{
+	enum isUnion= is(T == union);
+}
+
+
+/**
+ */
+template isClass(T)
+{
+	enum isClass= is(T == class);
+}
+
+
 /**
  */
 template isInterface(T)
@@ -1466,8 +1493,44 @@ template isInterface(T)
 
 
 /**
-	alternation of built-in __traits(getVirtualFunctions, T, name)
  */
+template isType(T)
+{
+	enum isType = true;
+}
+/// ditto
+template isType(alias A)
+{
+	enum isType = false;
+}
+
+
+/**
+ */
+template isAlias(T)
+{
+	enum isAlias = false;
+}
+/// ditto
+template isAlias(alias A)
+{
+	enum isAlias = true;
+}
+
+unittest
+{
+	alias Sequence!(int, long, 10, 2.0) S;
+
+	alias staticFilter!(isType,  S) Rt;
+	alias Sequence!(int, long) At;
+	static assert(is(Rt == At));
+
+	alias staticFilter!(isAlias, S) Ra;
+	alias Sequence!(10, 2.0) Aa;
+//	static assert(Ra == Aa);
+	static assert(Ra[0] == Aa[0]);
+	static assert(Ra[1] == Aa[1]);
+}
 
 
 //----------------------------------------------------------------------------//
