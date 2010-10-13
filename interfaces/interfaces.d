@@ -13,11 +13,13 @@ import meta_forward, meta_expand;
 import meta;
 alias meta.staticMap staticMap;
 alias meta.isSame isSame;
+alias meta.allSatisfy allSatisfy;
 
 
-private template AdaptTo(Interface) if( isInterface!Interface )
+private template AdaptTo(Interfaces...)
+	if( allSatisfy!(isInterface, Interfaces) )
 {
-	alias VirtualFunctionsOf!Interface Idents;
+	alias staticUniq!(staticMap!(VirtualFunctionsOf, Interfaces)) Idents;
 
 	template CovariantSignatures(T)
 	{
@@ -75,7 +77,7 @@ private template AdaptTo(Interface) if( isInterface!Interface )
 		enum hasRequireMethods = __traits(compiles, CovariantSignatures!T.Result);
 	}
 	
-	final class Impl(T) : Interface
+	final class Impl(T) : Interfaces
 	{
 	private:
 		alias CovariantSignatures!T.Result CoTypes;
@@ -107,9 +109,12 @@ private template AdaptTo(Interface) if( isInterface!Interface )
 	}
 }
 /// 
-Interface adaptTo(Interface, T)(T obj) if( AdaptTo!Interface.hasRequireMethods!T )
+template adaptTo(Interfaces...)
 {
-	return new AdaptTo!Interface.Impl!T(obj);
+	auto adaptTo(T)(T obj) if( AdaptTo!Interfaces.hasRequireMethods!T )
+	{
+		return new AdaptTo!Interfaces.Impl!T(obj);
+	}
 }
 
 
@@ -127,6 +132,33 @@ unittest
 	auto c = new C();
 	Drawable d = adaptTo!Drawable(c);
 	assert(d.draw() == 10);
+}
+
+
+unittest
+{
+	static class C
+	{
+		int draw(){ return 10; }
+		int reflesh(){ return 20; }
+	}
+	interface Drawable
+	{
+		int draw();
+	}
+	interface Refleshable
+	{
+		int reflesh();
+	}
+	
+	auto c = new C();
+	auto a = adaptTo!(Drawable, Refleshable)(c);
+	Drawable    d = a;
+	Refleshable r = a;
+	assert(a.draw() == 10);
+	assert(d.draw() == 10);
+	assert(a.reflesh() == 20);
+	assert(r.reflesh() == 20);
 }
 
 
@@ -183,7 +215,8 @@ unittest
 		int draw(){ return 10; }
 	}
 	
-	interface Drawable{
+	interface Drawable
+	{
 		int draw();
 		static int f(){ return 20; }
 	}
@@ -218,11 +251,11 @@ unittest
 	auto  a = new A();
 	auto ia = new immutable(A)();
 	{
-		auto		   d = adaptTo!Drawable(a);
-		const		  cd = adaptTo!Drawable(a);
-		shared		  sd = adaptTo!(shared(Drawable))(a);
-		shared const scd = adaptTo!(shared(Drawable))(a);
-		immutable	  id = adaptTo!(immutable(Drawable))(ia);
+						Drawable   d = adaptTo!Drawable(a);
+		const			Drawable  cd = adaptTo!Drawable(a);
+		shared			Drawable  sd = adaptTo!Drawable(a);
+		shared const	Drawable scd = adaptTo!Drawable(a);
+		immutable		Drawable  id = adaptTo!Drawable(ia);
 		assert(  d.draw() == 10);
 		assert( cd.draw() == 20);
 		assert( sd.draw() == 30);
@@ -303,20 +336,27 @@ unittest
 		int draw(){ return 10; }	// covariant return types
 	}
 	static assert(isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
-	auto d = adaptTo!Drawable(new C());
-	assert(d.draw() == 10);
+	
+	auto a = adaptTo!Drawable(new C());
+	static assert(is(typeof(a.draw()) == int));
+	
+	Drawable d = a;
+	static assert(is(typeof(d.draw()) == long));
 }
 unittest
 {
 	interface Drawable
 	{
-		int draw() ;
+		int draw();
 	}
 	static class C
 	{
 		int draw()const{ return 10; }	// covariant storage classes
 	}
 	static assert(isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
-	auto d = adaptTo!Drawable(new C());
-	assert(d.draw() == 10);
+	auto a = adaptTo!Drawable(new C());
+	static assert(is(typeof(a.draw) == const));
+	
+	Drawable d = a;
+	static assert(!is(typeof(d.draw) == const));
 }
