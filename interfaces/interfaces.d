@@ -18,7 +18,6 @@ private template AdaptTo(Interfaces...)
 	if( allSatisfy!(isInterface, Interfaces) )
 {
 	alias staticUniq!(staticMap!(VirtualFunctionsOf, Interfaces)) Idents;
-	enum Idents_length = Idents.length;		//workaround
 
 	template CovariantSignatures(T)
 	{
@@ -62,7 +61,7 @@ private template AdaptTo(Interfaces...)
 		}
 		alias staticMap!(
 			Instantiate!CovariantIndexWith.Returns!"Result",
-			staticIota!(0, Idents_length)
+			staticIota!(0, staticLength!Idents)	//workaround @@@BUG4333@@@
 		) Result;
 	}
 	
@@ -94,7 +93,8 @@ private template AdaptTo(Interfaces...)
 		mixin mixinAll!(
 			staticMap!(
 				generateFun,
-				staticMap!(StringOf, staticIota!(0, Idents_length))));
+				staticMap!(StringOf, staticIota!(0,
+					staticLength!Idents))));	//workaround @@@BUG4333@@@
 	}
 }
 /// 
