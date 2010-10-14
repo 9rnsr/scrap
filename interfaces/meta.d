@@ -442,12 +442,12 @@ private template _staticMerger(alias comp)
 			static if (Instantiate!comp.With!(B[0], A[0]))
 			{
 				alias Sequence!(B[0], Merge!(A		  )
-										 .With!(B[1 .. $])) With;
+									  .With!(B[1 .. $])) With;
 			}
 			else
 			{
 				alias Sequence!(A[0], Merge!(A[1 .. $])
-										 .With!(B		 )) With;
+									  .With!(B		 )) With;
 			}
 		}
 	}
@@ -1567,7 +1567,7 @@ else
 //		
 //		template MakeSeq(int n)
 //		{
-//			static if( n >= Overloads.length )
+//			static if (n >= Overloads.length)
 //			{
 //				alias Sequence!() Result;
 //			}
@@ -1606,7 +1606,7 @@ else
  */
 template VirtualFunctionsOf(T, string name="")
 {
-	static if( name == "" )
+	static if (name == "")
 	{
 		alias staticMap!(
 			Instantiate!(
@@ -1626,7 +1626,7 @@ private template staticIndexOfIfImpl(alias pred, seq...)
 {
 	enum len = seq.length;
 	enum len2 = staticFindIf!(pred, seq).length;
-	static if( len2 == 0 )
+	static if (len2 == 0)
 	{
 		enum int Result = -1;
 	}
@@ -1641,6 +1641,9 @@ template staticIndexOfIf(alias pred, seq...)
 }
 
 
+//----------------------------------------------------------------------------//
+// Mixins
+//----------------------------------------------------------------------------//
 
 /**
 	both of template-mixin or string-mixin
@@ -1667,11 +1670,9 @@ template mixinAll(mixins...)
 }
 
 
-private
+private @trusted
 {
-	import std.conv;
 	import std.string;
-	import std.stdio;
 
 	bool isoctdigit(dchar c)
 	{
@@ -1687,7 +1688,7 @@ private
 		string result;
 		string remain;
 		
-		@safe bool opCast(T)() if (is(T==bool))
+		bool opCast(T)() if (is(T==bool))
 		{
 			return result.length > 0;
 		}
@@ -1704,7 +1705,7 @@ private
 		}
 	}
 
-	@trusted ParseResult parseStr(string code)
+	ParseResult parseStr(string code)
 	{
 		auto remain = chompPrefix(code, `"`);
 		if (remain.length < code.length)
@@ -1738,7 +1739,7 @@ private
 		return ParseResult(code);
 	}
 
-	@trusted ParseResult parseAltStr(string code)
+	ParseResult parseAltStr(string code)
 	{
 		auto remain = chompPrefix(code, "`");
 		if (remain.length < code.length)
@@ -1754,7 +1755,7 @@ private
 		return ParseResult(code);
 	}
 
-	@trusted ParseResult parseRawStr(string code)
+	ParseResult parseRawStr(string code)
 	{
 		auto remain = chompPrefix(code, `r"`);
 		if (remain.length < code.length)
@@ -1770,7 +1771,7 @@ private
 		return ParseResult(code);
 	}
 
-	@trusted ParseResult parseVar(string code)
+	ParseResult parseVar(string code)
 	{
 		auto remain = chompPrefix(code, `${`);
 		if (remain.length < code.length)
@@ -1786,7 +1787,7 @@ private
 		return ParseResult(code);
 	}
 
-	@trusted string expandCode(string code)
+	string expandCode(string code)
 	{
 		auto remain = code;
 		auto result = "";
@@ -1809,7 +1810,7 @@ private
 						~ "`~\"`\"~`";
 				remain  = pAltStr.remain;
 			}
-			else if( pRawStr )
+			else if (pRawStr)
 			{
 				result ~= pRawStr.result;
 				remain  = pRawStr.remain;
@@ -1880,6 +1881,10 @@ version(unittest)
 }
 
 
+//----------------------------------------------------------------------------//
+// Declarations
+//----------------------------------------------------------------------------//
+
 /**
  */
 template Declare(T, string name, init...)
@@ -1929,7 +1934,7 @@ import std.traits : isSomeFunction;
 template DeclareFunction(T, string name, string code) if (isSomeFunction!T)
 {
 private:
-	import std.traits, std.typetuple, std.metastrings;
+	import std.traits, std.typetuple, std.conv;
 	
 	alias FunctionTypeOf!T F;
 	
@@ -1963,7 +1968,7 @@ private:
 					~ PrmSTC2Str!(stc & ~ParameterStorageClass.LAZY);
 			}
 		}
-		static string PrmSTCs(int mode)
+		static string PrmSTCs(int mode) @trusted
 		{
 			alias staticMap!(PrmSTC2Str, ParameterStorageClassTuple!F) pstcs;
 			
@@ -1976,12 +1981,12 @@ private:
 				{
 					result ~= pstcs[i]
 						~ mixin(expand!q{
-							ParameterTypeTuple!F[${ToString!i}]
-						}) ~ paramName ~ ToString!i;
+							ParameterTypeTuple!F[${to!string(i)}]
+						}) ~ paramName ~ to!string(i);
 				}
 				else if (mode == 1) // Parameter names
 				{
-					result ~= paramName ~ ToString!i;
+					result ~= paramName ~ to!string(i);
 				}
 			}
 			return result;
@@ -2063,5 +2068,4 @@ unittest
 	assert( sc.a() == 30);
 	assert(scc.a() == 40);
 	assert( ic.a() == 50);
-	
 }
