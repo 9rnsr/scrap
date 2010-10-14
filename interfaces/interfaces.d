@@ -84,7 +84,7 @@ private template AdaptTo(Interfaces...)
 		template generateFun(string n)
 		{
 			enum generateFun = mixin(expand!q{
-				mixin Forward!(
+				mixin DeclareFunction!(
 					CoTypes[${n}],	// covariant
 					NameOf!(Idents[${n}]),
 					"return obj." ~ NameOf!(Idents[${n}]) ~ "(args);"

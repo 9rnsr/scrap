@@ -1673,8 +1673,14 @@ private
 	import std.string;
 	import std.stdio;
 
-	bool isoctdigit(dchar c){ return '0'<=c && c<='7'; }
-	bool ishexdigit(dchar c){ return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f'); }
+	bool isoctdigit(dchar c)
+	{
+		return '0'<=c && c<='7';
+	}
+	bool ishexdigit(dchar c)
+	{
+		return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f');
+	}
 
 	struct ParseResult
 	{
@@ -1876,13 +1882,59 @@ version(unittest)
 
 /**
  */
-template Forward(F, string name, string code)
+template Declare(T, string name, init...)
+{
+//	import std.traits : isSomeFunction, FunctionTypeOf;
+//	
+//	static if (isSomeFunction!T)
+//	{
+//		mixin DeclareFunction!(FunctionTypeOf!T, name, init);
+//	}
+//	else
+//	{
+		static if (init.length == 0)
+		{
+			mixin("T " ~ name ~ ";");
+		}
+		static if (init.length == 1)
+		{
+			mixin("T " ~ name ~ " = init[0];");
+		}
+//	}
+}
+/// ditto
+template Declare(alias wrap)
+{
+	mixin Declare!(wrap.Expand);
+}
+unittest
+{
+	mixin Declare!(int, "a");
+	assert(a == int.init);
+	a = 10;
+	
+	mixin Declare!(double, "b", 10.0);
+	assert(b == 10.0);
+	b = 20.0;
+	
+	mixin Declare!(Wrap!(string, "c", "test"));
+	assert(c == "test");
+}
+
+
+import std.traits : isSomeFunction;
+
+/**
+ */
+template DeclareFunction(T, string name, string code) if (isSomeFunction!T)
 {
 private:
 	import std.traits, std.typetuple, std.metastrings;
 	
+	alias FunctionTypeOf!T F;
+	
 	enum paramName = "a";
-	template ForwardImpl(F)
+	template DeclareImpl(F)
 	{
 		template PrmSTC2Str(uint stc)
 		{
@@ -1953,7 +2005,7 @@ private:
 			return result;
 		}
 	}
-	alias ForwardImpl!F Impl;
+	alias DeclareImpl!F Impl;
 
 public:
 	mixin(
@@ -1975,8 +2027,8 @@ unittest
 		alias int function(scope int, ref double) F;
 		
 		int value = 10;
-		mixin Forward!(F, "f", q{ a1      *= 2; return value*2; });
-		mixin Forward!(F, "g", q{ args[1] *= 3; return value*3; });
+		mixin DeclareFunction!(F, "f", q{ a1      *= 2; return value*2; });
+		mixin DeclareFunction!(F, "g", q{ args[1] *= 3; return value*3; });
 	}
 	
 	auto c = new C();
@@ -1995,11 +2047,11 @@ unittest
 		int j() immutable   { return 50; }
 		
 		// for overload set
-		mixin Forward!(typeof(f), "a1", q{ return f(); });  alias a1 a;
-		mixin Forward!(typeof(g), "a2", q{ return g(); });  alias a2 a;
-		mixin Forward!(typeof(h), "a3", q{ return h(); });  alias a3 a;
-		mixin Forward!(typeof(i), "a4", q{ return i(); });  alias a4 a;
-		mixin Forward!(typeof(j), "a5", q{ return j(); });  alias a5 a;
+		mixin DeclareFunction!(typeof(f), "a1", q{ return f(); });  alias a1 a;
+		mixin DeclareFunction!(typeof(g), "a2", q{ return g(); });  alias a2 a;
+		mixin DeclareFunction!(typeof(h), "a3", q{ return h(); });  alias a3 a;
+		mixin DeclareFunction!(typeof(i), "a4", q{ return i(); });  alias a4 a;
+		mixin DeclareFunction!(typeof(j), "a5", q{ return j(); });  alias a5 a;
 	}
 	auto           c = new C();
 	const         cc = new C();
