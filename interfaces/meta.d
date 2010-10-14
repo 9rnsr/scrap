@@ -1665,3 +1665,351 @@ template mixinAll(mixins...)
 		mixin mixinAll!(mixins[$/2 .. $ ]);
 	}
 }
+
+
+private
+{
+	import std.conv;
+	import std.string;
+	import std.stdio;
+
+	bool isoctdigit(dchar c){ return '0'<=c && c<='7'; }
+	bool ishexdigit(dchar c){ return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f'); }
+
+	struct ParseResult
+	{
+		string result;
+		string remain;
+		
+		@safe bool opCast(T)() if (is(T==bool))
+		{
+			return result.length > 0;
+		}
+		
+		this(string res, string rem)
+		{
+			result = res;
+			remain = rem;
+		}
+		this(string rem)
+		{
+			result = null;
+			remain = rem;
+		}
+	}
+
+	@trusted ParseResult parseStr(string code)
+	{
+		auto remain = chompPrefix(code, `"`);
+		if (remain.length < code.length)
+		{
+			size_t i = code.length - remain.length;
+			auto result = code[0 .. i];
+			for (; i<code.length; ++i)
+			{
+				auto pVar = parseVar(code[i..$]);
+				if (pVar)
+				{
+					result ~= "`~"
+							~ pVar.result[2..$-1]
+							~ "~`";
+					i += pVar.result.length;
+				}
+				
+				if (code[i] == '\\')
+				{
+					result ~= code[i];
+					++i;
+				}
+				else if (code[i] == '\"')
+				{
+					result ~= code[i];
+					return ParseResult(result, code[i+1..$]);
+				}
+				result ~= code[i];
+			}
+		}
+		return ParseResult(code);
+	}
+
+	@trusted ParseResult parseAltStr(string code)
+	{
+		auto remain = chompPrefix(code, "`");
+		if (remain.length < code.length)
+		{
+			foreach (i; 0..remain.length)
+			{
+				if (remain[i] == '`')
+				{
+					return ParseResult(code[0..1+i+1], remain[i+1..$]);
+				}
+			}
+		}
+		return ParseResult(code);
+	}
+
+	@trusted ParseResult parseRawStr(string code)
+	{
+		auto remain = chompPrefix(code, `r"`);
+		if (remain.length < code.length)
+		{
+			foreach (i; 0..remain.length)
+			{
+				if (remain[i] == '\"')
+				{
+					return ParseResult(code[0..2+i+1], remain[i+1..$]);
+				}
+			}
+		}
+		return ParseResult(code);
+	}
+
+	@trusted ParseResult parseVar(string code)
+	{
+		auto remain = chompPrefix(code, `${`);
+		if (remain.length < code.length)
+		{
+			foreach (i; 0..remain.length)
+			{
+				if (remain[i] == '}')
+				{
+					return ParseResult(code[0..2+i+1], remain[i+1..$]);
+				}
+			}
+		}
+		return ParseResult(code);
+	}
+
+	@trusted string expandCode(string code)
+	{
+		auto remain = code;
+		auto result = "";
+		while (remain.length)
+		{
+			auto pStr    = parseStr(remain);
+			auto pAltStr = parseAltStr(remain);
+			auto pRawStr = parseRawStr(remain);
+			auto pVar    = parseVar(remain);
+			
+			if (pStr)
+			{
+				result ~= pStr.result;
+				remain  = pStr.remain;
+			}
+			else if (pAltStr)
+			{
+				result ~= "`~\"`\"~`"
+						~ pAltStr.result[1..$-1]
+						~ "`~\"`\"~`";
+				remain  = pAltStr.remain;
+			}
+			else if( pRawStr )
+			{
+				result ~= pRawStr.result;
+				remain  = pRawStr.remain;
+			}
+			else if (pVar)
+			{
+				result ~= "`~"
+						~ pVar.result[2..$-1]
+						~ "~`";
+				remain  = pVar.remain;
+			}
+			else
+			{
+				result ~= remain[0];
+				remain  = remain[1..$];
+			}
+		}
+		return result;
+	}
+}
+/**
+	Expand expression in code string
+	----
+	enum string op = "+";
+	static assert(expand!q{ 1 ${op} 2 } == q{ 1 + 2 });
+	----
+	
+	Using both mixin expression, it is easy making parameterized code-blocks.
+	----
+	template DeclFunc(string name)
+	{
+		mixin(expand!q{
+			int ${name}(int a){ return a; }
+		});
+	}
+	----
+	DeclFunc template generates specified name function.
+ */
+template expand(string code)
+{
+	enum expand = "`" ~ expandCode(code) ~ "`";
+}
+
+
+version(unittest)
+{
+	template ExpandTest(string op, string from)
+	{
+		enum ExpandTest = mixin(expand!from);
+	}
+	static assert(ExpandTest!("+", q{a ${op} b})     == q{a + b});
+	static assert(ExpandTest!("+", q{`raw string`})  == q{`raw string`});
+	static assert(ExpandTest!("+", q{"a ${op} b"})   == q{"a + b"});
+	static assert(ExpandTest!("+", q{r"${op}"})      == q{r"${op}"});
+	static assert(ExpandTest!("+", q{`${op}`})       == q{`${op}`});
+	static assert(ExpandTest!("+", q{"\a"})          == q{"\a"});
+	static assert(ExpandTest!("+", q{"\xA1"})        == q{"\xA1"});
+	static assert(ExpandTest!("+", q{"\0"})          == q{"\0"});
+	static assert(ExpandTest!("+", q{"\01"})         == q{"\01"});
+	static assert(ExpandTest!("+", q{"\012"})        == q{"\012"});
+	static assert(ExpandTest!("+", q{"\u0FFF"})      == q{"\u0FFF"});
+	static assert(ExpandTest!("+", q{"\U00000FFF"})  == q{"\U00000FFF"});
+
+	static assert(ExpandTest!("+", q{"\""})          == q{"\""});
+
+	static assert(ExpandTest!("+", q{${op} ${op}})   == q{+ +});
+	static assert(ExpandTest!("+", q{"${op} ${op}"}) == q{"+ +"});
+}
+
+
+/**
+ */
+template Forward(F, string name, string code)
+{
+private:
+	import std.traits, std.typetuple, std.metastrings;
+	
+	enum paramName = "a";
+	template ForwardImpl(F)
+	{
+		template PrmSTC2Str(uint stc)
+		{
+			static if (stc == ParameterStorageClass.NONE)
+			{
+				enum PrmSTC2Str = "";
+			}
+			else static if (stc & ParameterStorageClass.SCOPE)
+			{
+				enum PrmSTC2Str = "scope "
+					~ PrmSTC2Str!(stc & ~ParameterStorageClass.SCOPE);
+			}
+			else static if (stc & ParameterStorageClass.OUT)
+			{
+				enum PrmSTC2Str = "out "
+					~ PrmSTC2Str!(stc & ~ParameterStorageClass.OUT);
+			}
+			else static if (stc & ParameterStorageClass.REF)
+			{
+				enum PrmSTC2Str = "ref "
+					~ PrmSTC2Str!(stc & ~ParameterStorageClass.REF);
+			}
+			else static if (stc & ParameterStorageClass.LAZY)
+			{
+				enum PrmSTC2Str = "lazy "
+					~ PrmSTC2Str!(stc & ~ParameterStorageClass.LAZY);
+			}
+		}
+		static string PrmSTCs(int mode)
+		{
+			alias staticMap!(PrmSTC2Str, ParameterStorageClassTuple!F) pstcs;
+			
+			string result;
+			foreach (i, stc ; pstcs)
+			{
+				if (i > 0)
+					result ~= ", ";
+				if (mode == 0)      // Parameter defines
+				{
+					result ~= pstcs[i]
+						~ mixin(expand!q{
+							ParameterTypeTuple!F[${ToString!i}]
+						}) ~ paramName ~ ToString!i;
+				}
+				else if (mode == 1) // Parameter names
+				{
+					result ~= paramName ~ ToString!i;
+				}
+			}
+			return result;
+		}
+		
+		static string FunSTCs()
+		{
+			string result;
+			static if (is(F == shared))
+			{
+				result ~= "shared ";
+			}
+			static if (is(F == const))
+			{
+				result ~= "const ";
+			}
+			static if (is(F == immutable))
+			{
+				result ~= "immutable ";
+			}
+			return result;
+		}
+	}
+	alias ForwardImpl!F Impl;
+
+public:
+	mixin(
+		mixin(expand!
+		q{
+			ReturnType!F ${name}(${Impl.PrmSTCs(0)}) ${Impl.FunSTCs()} {
+				alias TypeTuple!(${Impl.PrmSTCs(1)}) args;
+				mixin(code);
+			}
+		})
+	);
+}
+
+
+unittest
+{
+	static class C
+	{
+		alias int function(scope int, ref double) F;
+		
+		int value = 10;
+		mixin Forward!(F, "f", q{ a1      *= 2; return value*2; });
+		mixin Forward!(F, "g", q{ args[1] *= 3; return value*3; });
+	}
+	
+	auto c = new C();
+	double v = 1.0;
+	assert(c.f(1, v) == 20);  assert(v == 2.0);
+	assert(c.g(1, v) == 30);  assert(v == 6.0);
+}
+unittest
+{
+	static class C
+	{
+		int f()             { return 10; }
+		int g() const       { return 20; }
+		int h() shared      { return 30; }
+		int i() shared const{ return 40; }
+		int j() immutable   { return 50; }
+		
+		// for overload set
+		mixin Forward!(typeof(f), "a1", q{ return f(); });  alias a1 a;
+		mixin Forward!(typeof(g), "a2", q{ return g(); });  alias a2 a;
+		mixin Forward!(typeof(h), "a3", q{ return h(); });  alias a3 a;
+		mixin Forward!(typeof(i), "a4", q{ return i(); });  alias a4 a;
+		mixin Forward!(typeof(j), "a5", q{ return j(); });  alias a5 a;
+	}
+	auto           c = new C();
+	const         cc = new C();
+	shared        sc = new shared(C)();
+	shared const scc = new shared(const(C))();
+	immutable     ic = new immutable(C)();
+	assert(  c.a() == 10);
+	assert( cc.a() == 20);
+	assert( sc.a() == 30);
+	assert(scc.a() == 40);
+	assert( ic.a() == 50);
+	
+}

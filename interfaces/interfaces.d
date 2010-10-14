@@ -8,8 +8,6 @@ module interfaces;
 import std.traits, std.typecons, std.typetuple;
 import std.functional;
 
-import meta_forward, meta_expand;
-
 import meta;
 alias meta.staticMap staticMap;
 alias meta.isSame isSame;
