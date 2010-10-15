@@ -756,8 +756,11 @@ private
 
 	template _minLength(tuples...)
 	{
-		alias staticMost!(q{ a < b }, staticMap!(q{ a.length }, tuples))
-			  _minLength;
+		static if (tuples.length == 0)
+			enum _minLength = 0;
+		else
+			alias staticMost!(q{ a < b }, staticMap!(q{ a.length }, tuples))
+				  _minLength;
 	}
 }
 
@@ -1905,6 +1908,71 @@ version(unittest)
 
 
 /**
+ */
+enum FunctionStorageClass : uint
+{
+    /**
+     * These flags can be bitwise OR-ed together to represent complex storage
+     * class.
+     */
+	NONE			= 0,
+	SHARED			= 0b0001,
+	CONST			= 0b0010,
+	IMMUTABLE		= 0b0100,
+	SHARED_CONST	= SHARED | CONST,
+}
+/**
+ */
+template functionStorageClass(func...) if (func.length==1)
+{
+    static if (is(FunctionTypeOf!(func) F))
+    	enum uint functionStorageClass =
+    		(is(F == const    ) ? FunctionStorageClass.CONST     : 0) |
+    		(is(F == shared   ) ? FunctionStorageClass.SHARED    : 0) |
+    		(is(F == immutable) ? FunctionStorageClass.IMMUTABLE : 0);
+    else
+        static assert(0, "argument is not a function");
+}
+
+/**
+	Specialized template for FunctionStorageClass
+ */
+template StringOf(FunctionStorageClass pstc)
+{
+	static if (pstc & FunctionStorageClass.NONE        ) enum StringOf = "";
+	static if (pstc & FunctionStorageClass.CONST       ) enum StringOf = "const ";
+	static if (pstc & FunctionStorageClass.SHARED      ) enum StringOf = "shared ";
+	static if (pstc & FunctionStorageClass.IMMUTABLE   ) enum StringOf = "immutable ";
+}
+
+/// 
+enum FunctionStorageClasses : FunctionStorageClass
+{
+	NONE = FunctionStorageClass.NONE,	//dummy
+}
+
+private template StringOf_FStC(alias fstcs, size_t i)
+{
+	static if (fstcs == 0)
+		enum StringOf_FStC = "";
+	else static if (fstcs & (1<<i))
+		enum StringOf_FStC =
+			StringOf!(cast(FunctionStorageClass)(fstcs & (1<<i)))
+			~ StringOf_FStC!(cast(FunctionStorageClasses)(fstcs & ~(1<<i)), i+1);
+	else
+		enum StringOf_FStC =
+			StringOf_FStC!(cast(FunctionStorageClasses)(fstcs), i+1);
+}
+/**
+	Specialized template for FunctionStorageClasses
+ */
+template StringOf(FunctionStorageClasses fstcs)
+{
+	alias StringOf_FStC!(fstcs, 0) StringOf;
+}
+
+
+/**
 	Specialized template for ParameterStorageClass
  */
 template StringOf(ParameterStorageClass pstc)
@@ -1917,7 +1985,7 @@ template StringOf(ParameterStorageClass pstc)
 
 
 /// 
-enum ParameterStorageClassSet : ParameterStorageClass
+enum ParameterStorageClasses : ParameterStorageClass
 {
 	NONE = ParameterStorageClass.NONE,	//dummy
 }
@@ -1929,15 +1997,15 @@ private template StringOf_PStC(alias pstcs, size_t i)
 	else static if (pstcs & (1<<i))
 		enum StringOf_PStC =
 			StringOf!(cast(ParameterStorageClass)(pstcs & (1<<i)))
-			~ StringOf_PStC!(cast(ParameterStorageClassSet)(pstcs & ~(1<<i)), i+1);
+			~ StringOf_PStC!(cast(ParameterStorageClasses)(pstcs & ~(1<<i)), i+1);
 	else
 		enum StringOf_PStC =
-			StringOf_PStC!(cast(ParameterStorageClassSet)(pstcs), i+1);
+			StringOf_PStC!(cast(ParameterStorageClasses)(pstcs), i+1);
 }
 /**
-	Specialized template for ParameterStorageClassSet
+	Specialized template for ParameterStorageClasses
  */
-template StringOf(ParameterStorageClassSet pstcs)
+template StringOf(ParameterStorageClasses pstcs)
 {
 	alias StringOf_PStC!(pstcs, 0) StringOf;
 }
@@ -1958,7 +2026,7 @@ template StringOf(FunctionAttribute attr)
 
 
 /// 
-enum FunctionAttributeSet : FunctionAttribute
+enum FunctionAttributes : FunctionAttribute
 {
 	NONE = FunctionAttribute.NONE,	//dummy
 }
@@ -1970,15 +2038,15 @@ private template StringOf_FAs(alias attrs, size_t i)
 	else static if (attrs & (1<<i))
 		enum StringOf_FAs =
 			StringOf!(cast(FunctionAttribute)(attrs & (1<<i)))
-			~ StringOf_FAs!(cast(FunctionAttributeSet)(attrs & ~(1<<i)), i+1);
+			~ StringOf_FAs!(cast(FunctionAttributes)(attrs & ~(1<<i)), i+1);
 	else
 		enum StringOf_FAs =
-			StringOf_FAs!(cast(FunctionAttributeSet)(attrs), i+1);
+			StringOf_FAs!(cast(FunctionAttributes)(attrs), i+1);
 }
 /**
-	Specialized template for FunctionAttributeSet
+	Specialized template for FunctionAttributes
 */
-template StringOf(FunctionAttributeSet attrs)
+template StringOf(FunctionAttributes attrs)
 {
 	alias StringOf_FAs!(attrs, 0) StringOf;
 }
@@ -1990,8 +2058,8 @@ template ParameterInfo(alias Param)
 {
 	alias Identity!(Param.at!0) Type;
 	
-	enum ParameterStorageClassSet storageClass =
-		cast(ParameterStorageClassSet)(Param.at!1);
+	enum ParameterStorageClasses storageClass =
+		cast(ParameterStorageClasses)(Param.at!1);
 	enum isScope = (storageClass & ParameterStorageClass.SCOPE) != 0;
 	enum isOut   = (storageClass & ParameterStorageClass.OUT  ) != 0;
 	enum isRef   = (storageClass & ParameterStorageClass.REF  ) != 0;
@@ -2001,8 +2069,10 @@ template ParameterInfo(alias Param)
 
 /**
  */
-template FunctionInfo(alias F)
+template FunctionInfo(A...) if (is(FunctionTypeOf!A))
 {
+	alias FunctionTypeOf!A F;
+
 	alias .ReturnType!F ReturnType;
 	
 	alias staticMap!(
@@ -2011,8 +2081,15 @@ template FunctionInfo(alias F)
 			Wrap!(ParameterTypeTuple!F),
 			Wrap!(ParameterStorageClassTuple!F))) Parameters;
 	
-	enum FunctionAttributeSet attributes =
-		cast(FunctionAttributeSet)(functionAttributes!F);
+	enum FunctionStorageClasses storageClass =
+		cast(FunctionStorageClasses)(functionStorageClass!F);
+	enum isConst		= (storageClass & FunctionStorageClass.CONST       ) != 0;
+	enum isShared		= (storageClass & FunctionStorageClass.SHARED      ) != 0;
+	enum isSharedConst	= (storageClass & FunctionStorageClass.SHARED_CONST) != 0;
+	enum isImmutable	= (storageClass & FunctionStorageClass.IMMUTABLE   ) != 0;
+	
+	enum FunctionAttributes attributes =
+		cast(FunctionAttributes)(functionAttributes!F);
 	enum isPure     = (attributes & FunctionAttribute.PURE    ) != 0;
 	enum isNothrow  = (attributes & FunctionAttribute.NOTHROW ) != 0;
 	enum isRef      = (attributes & FunctionAttribute.REF     ) != 0;
@@ -2185,6 +2262,18 @@ private:
 		}
 	}
 	alias DeclareImpl!F Impl;
+
+	alias FunctionInfo!T F2;
+	alias staticMap!(
+		Instantiate!q{ a.at!0 ~ a.at!1 ~ " a" ~ to!string(a.at!2) }.With,
+		staticZip!(
+			Wrap!(staticMap!(Instantiate!q{ StringOf!(a.storageClass) }.With, F2.Parameters)),
+			Wrap!(staticMap!(Instantiate!q{ StringOf!(a.Type)         }.With, F2.Parameters)),
+			Wrap!(staticIota!(0, staticLength!(F2.Parameters)))))
+	Prms;
+	pragma(msg, F, " : ", StringOf!(F2.storageClass), StringOf!(F2.attributes), F2.ReturnType, " ", Prms, " -> ");
+
+
 
 public:
 	mixin(
