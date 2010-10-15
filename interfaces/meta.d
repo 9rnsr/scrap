@@ -1899,6 +1899,39 @@ version(unittest)
 
 	static assert(ExpandTest!("+", q{${op} ${op}})   == q{+ +});
 	static assert(ExpandTest!("+", q{"${op} ${op}"}) == q{"+ +"});
+	
+	static assert(ExpandTest!("+", q{Temm!q{ x ${op} y }}) == q{Temm!q{ x + y }});
+	
+	// --------
+/+		alias Sequence!("a", "b", "c") ParamNames;
+		
+		enum inner = expand!q{
+	join([staticMap!(
+		Instantiate!q{ "a" ~ to!string(a) }.With,
+		staticIota!(0, 5))], ", ")
+};
+pragma(msg, inner);
+		static assert(inner == mixin(q{
+	join([a0, a1, a2, a3, a4], ", ")
+}));
++/
+		enum res = expand!q{
+alias Sequence!(${
+	join([staticMap!(
+		Instantiate!q{ "a" ~ to!string(a) }.With,
+		staticIota!(0, 5))], ", ")
+	}) args;
+};
+//		pragma(msg, res);
+
+/+		static assert(res == q{`
+alias Sequence!(`~
+	join([staticMap!(
+		Instantiate!q{ "a" ~ to!string(a) }.With,
+		staticIota!(0, 5))], ", ")
+	~`) args;
+`});+/
+	// --------
 }
 
 
@@ -2069,7 +2102,7 @@ template ParameterInfo(alias Param)
 
 /**
  */
-template FunctionInfo(A...) if (is(FunctionTypeOf!A))
+template FunctionTypeInfo(A...) if (is(FunctionTypeOf!A))
 {
 	alias FunctionTypeOf!A F;
 
@@ -2103,7 +2136,7 @@ unittest
 	alias FunctionAttribute FA;
 
 	void test(int, scope int, out int, ref int, lazy int) nothrow @safe { }
-	alias FunctionInfo!test T;
+	alias FunctionTypeInfo!test T;
 	
 	static assert(is(T.ReturnType == void));
 	
@@ -2182,109 +2215,54 @@ unittest
 
 /**
  */
-template DeclareFunction(T, string name, string code) if (isSomeFunction!T)
+template DeclareFunction(F, string name, string code)
 {
 private:
-	import std.traits, std.typetuple;
-	
-	alias FunctionTypeOf!T F;
-	
-	enum paramName = "a";
-	template DeclareImpl(F)
-	{
-		template PrmSTC2Str(uint stc)
-		{
-			static if (stc == ParameterStorageClass.NONE)
-			{
-				enum PrmSTC2Str = "";
-			}
-			else static if (stc & ParameterStorageClass.SCOPE)
-			{
-				enum PrmSTC2Str = "scope "
-					~ PrmSTC2Str!(stc & ~ParameterStorageClass.SCOPE);
-			}
-			else static if (stc & ParameterStorageClass.OUT)
-			{
-				enum PrmSTC2Str = "out "
-					~ PrmSTC2Str!(stc & ~ParameterStorageClass.OUT);
-			}
-			else static if (stc & ParameterStorageClass.REF)
-			{
-				enum PrmSTC2Str = "ref "
-					~ PrmSTC2Str!(stc & ~ParameterStorageClass.REF);
-			}
-			else static if (stc & ParameterStorageClass.LAZY)
-			{
-				enum PrmSTC2Str = "lazy "
-					~ PrmSTC2Str!(stc & ~ParameterStorageClass.LAZY);
-			}
-		}
-		static string PrmSTCs(int mode) @trusted
-		{
-			alias staticMap!(PrmSTC2Str, ParameterStorageClassTuple!F) pstcs;
-			
-			string result;
-			foreach (i, stc ; pstcs)
-			{
-				if (i > 0)
-					result ~= ", ";
-				if (mode == 0)      // Parameter defines
-				{
-					result ~= pstcs[i]
-						~ mixin(expand!q{
-							ParameterTypeTuple!F[${to!string(i)}]
-						}) ~ paramName ~ to!string(i);
-				}
-				else if (mode == 1) // Parameter names
-				{
-					result ~= paramName ~ to!string(i);
-				}
-			}
-			return result;
-		}
-		
-		static string FunSTCs()
-		{
-			string result;
-			static if (is(F == shared))
-			{
-				result ~= "shared ";
-			}
-			static if (is(F == const))
-			{
-				result ~= "const ";
-			}
-			static if (is(F == immutable))
-			{
-				result ~= "immutable ";
-			}
-			return result;
-		}
-	}
-	alias DeclareImpl!F Impl;
-
-	alias FunctionInfo!T F2;
+	alias FunctionTypeInfo!F FTI;
 	alias staticMap!(
 		Instantiate!q{ a.at!0 ~ a.at!1 ~ " a" ~ to!string(a.at!2) }.With,
 		staticZip!(
-			Wrap!(staticMap!(Instantiate!q{ StringOf!(a.storageClass) }.With, F2.Parameters)),
-			Wrap!(staticMap!(Instantiate!q{ StringOf!(a.Type)         }.With, F2.Parameters)),
-			Wrap!(staticIota!(0, staticLength!(F2.Parameters)))))
-	Prms;
-	pragma(msg, F, " : ", StringOf!(F2.storageClass), StringOf!(F2.attributes), F2.ReturnType, " ", Prms, " -> ");
+			Wrap!(
+				staticMap!(
+					Instantiate!q{ StringOf!(a.storageClass) }.With,
+					FTI.Parameters)),
+			Wrap!(
+				staticMap!(
+					Instantiate!q{ StringOf!(a.Type) }.With,
+					FTI.Parameters)),
+			Wrap!(
+				staticIota!(0, staticLength!(FTI.Parameters)))
+		)
+	) ParamStrings;
 
-
+	// workaround for std.string.join cannot CFTE.
+	private template Join(alias words, string sep)
+	{
+		static if (words.length == 0)
+			enum Join = "";
+		else static if (words.length == 1)
+			enum Join = words.Expand[0];
+		else
+			enum Join = words.Expand[0] ~ sep ~ Join!(words.drop!1, sep);
+	}
 
 public:
-	mixin(
-		mixin(expand!
-		q{
-			ReturnType!F ${name}(${Impl.PrmSTCs(0)}) ${Impl.FunSTCs()} {
-				alias TypeTuple!(${Impl.PrmSTCs(1)}) args;
-				mixin(code);
-			}
-		})
-	);
+	mixin(mixin(expand!q{
+		${StringOf!(FTI.storageClass)}
+		${StringOf!(FTI.attributes)}
+		FTI.ReturnType
+		${name}
+		(${Join!(Wrap!ParamStrings, ", ")})
+		{
+			alias Sequence!(${
+				Join!(Wrap!(
+					staticMap!(
+						Instantiate!` "a" ~ to!string(a) `.With,
+						staticIota!(0, staticLength!(FTI.Parameters)))), ", ")
+				}) args;
+			mixin(code);
+		}
+	}));
 }
 
 
