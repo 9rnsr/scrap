@@ -3,6 +3,11 @@
 */
 module meta;
 
+private import std.conv : to;
+private import std.string;
+private import std.traits;
+
+
 @safe:
 
 
@@ -37,7 +42,7 @@ template staticMap(alias map, seq...)
 	else
 	{
 		alias Sequence!(staticMap!(map, seq[ 0	.. $/2]),
-						   staticMap!(map, seq[$/2 ..  $ ]))
+						staticMap!(map, seq[$/2 ..  $ ]))
 			  staticMap;
 	}
 }
@@ -65,7 +70,7 @@ template staticFilter(alias pred, seq...)
 	else
 	{
 		alias Sequence!(staticFilter!(pred, seq[ 0	.. $/2]),
-						   staticFilter!(pred, seq[$/2 ..  $ ]))
+						staticFilter!(pred, seq[$/2 ..  $ ]))
 			  staticFilter;
 	}
 }
@@ -518,12 +523,12 @@ private template _staticUniqMerger(alias comp)
 			static if (Instantiate!comp.With!(A[0], B[0]))
 			{
 				alias Sequence!(A[0], Merge!(A[1 .. $])
-										 .With!(B[0 .. $])) With;
+									  .With!(B[0 .. $])) With;
 			}
 			else static if (Instantiate!comp.With!(B[0], A[0]))
 			{
 				alias Sequence!(B[0], Merge!(A[0 .. $])
-										 .With!(B[1 .. $])) With;
+									  .With!(B[1 .. $])) With;
 			}
 			else
 			{
@@ -574,13 +579,13 @@ template staticUniq(seq...)
 		static if (isSame!(seq[$/2 - 1], seq[$/2]))
 		{
 			alias Sequence!(staticUniq!(seq[0 .. $/2]),
-							   staticUniq!(seq[$/2 .. $])[1 .. $])
+							staticUniq!(seq[$/2 .. $])[1 .. $])
 				  staticUniq;
 		}
 		else
 		{
 			alias Sequence!(staticUniq!(seq[0 .. $/2]),
-							   staticUniq!(seq[$/2 .. $]))
+							staticUniq!(seq[$/2 .. $]))
 				  staticUniq;
 		}
 	}
@@ -602,8 +607,8 @@ template staticRemoveDuplicates(seq...)
 	else
 	{
 		alias Sequence!(seq[0],
-						   staticRemoveDuplicates!(staticRemove!(seq[0],
-																 seq[1 .. $])))
+						staticRemoveDuplicates!(staticRemove!(seq[0],
+															  seq[1 .. $])))
 			  staticRemoveDuplicates;
 	}
 }
@@ -624,7 +629,7 @@ template staticReverse(seq...)
 	else
 	{
 		alias Sequence!(staticReverse!(seq[$/2 ..  $ ]),
-						   staticReverse!(seq[ 0  .. $/2]))
+						staticReverse!(seq[ 0  .. $/2]))
 			  staticReverse;
 	}
 }
@@ -651,7 +656,7 @@ template staticRepeat(size_t n, seq...)
 		else
 		{
 			alias Sequence!(staticRepeat!(	 n	  / 2, seq),
-							   staticRepeat!((n + 1) / 2, seq))
+							staticRepeat!((n + 1) / 2, seq))
 				  staticRepeat;
 		}
 	}
@@ -680,7 +685,7 @@ template staticStride(size_t n, seq...)
 		else
 		{
 			alias Sequence!(staticStride!(n, seq[0 .. _strideMid!($, n)]),
-							   staticStride!(n, seq[_strideMid!($, n) .. $]))
+							staticStride!(n, seq[_strideMid!($, n) .. $]))
 				  staticStride;
 		}
 	}
@@ -1431,18 +1436,14 @@ template TypeOf(alias a)
 
 /**
  */
-template StringOf(alias A)
+template StringOf(T...)
 {
-	enum StringOf = A.stringof;
-}
-/// ditto
-template StringOf(T)
-{
-	enum StringOf = T.stringof;
+	enum StringOf = T[0].stringof;
 }
 
 
 /**
+	std.typetuple.staticLength ?
  */
 template LengthOf(T...)
 {
@@ -1539,6 +1540,25 @@ unittest
 //	static assert(Ra == Aa);
 	static assert(Ra[0] == Aa[0]);
 	static assert(Ra[1] == Aa[1]);
+}
+
+
+/**
+ */
+template isInstantiatedWith(alias A, alias T)
+{
+	static if (__traits(compiles, Identifier!A))
+	{
+		enum isInstantiatedWith = 
+			chompPrefix(
+				Identifier!A,
+				"__T" ~ to!string(Identifier!T.length) ~ Identifier!T)
+			!= Identifier!A;
+	}
+	else
+	{
+		enum isInstantiatedWith = false;
+	}
 }
 
 
@@ -1672,8 +1692,6 @@ template mixinAll(mixins...)
 
 private @trusted
 {
-	import std.string;
-
 	bool isoctdigit(dchar c)
 	{
 		return '0'<=c && c<='7';
@@ -1882,6 +1900,164 @@ version(unittest)
 
 
 //----------------------------------------------------------------------------//
+// Traits
+//----------------------------------------------------------------------------//
+
+
+/**
+	Specialized template for ParameterStorageClass
+ */
+template StringOf(ParameterStorageClass pstc)
+{
+	static if (pstc & ParameterStorageClass.SCOPE) enum StringOf = "scope ";
+	static if (pstc & ParameterStorageClass.OUT  ) enum StringOf = "out ";
+	static if (pstc & ParameterStorageClass.REF  ) enum StringOf = "ref ";
+	static if (pstc & ParameterStorageClass.LAZY ) enum StringOf = "lazy ";
+}
+
+
+/// 
+enum ParameterStorageClassSet : ParameterStorageClass
+{
+	NONE = ParameterStorageClass.NONE,	//dummy
+}
+
+private template StringOf_PStC(alias pstcs, size_t i)
+{
+	static if (pstcs == 0)
+		enum StringOf_PStC = "";
+	else static if (pstcs & (1<<i))
+		enum StringOf_PStC =
+			StringOf!(cast(ParameterStorageClass)(pstcs & (1<<i)))
+			~ StringOf_PStC!(cast(ParameterStorageClassSet)(pstcs & ~(1<<i)), i+1);
+	else
+		enum StringOf_PStC =
+			StringOf_PStC!(cast(ParameterStorageClassSet)(pstcs), i+1);
+}
+/**
+	Specialized template for ParameterStorageClassSet
+ */
+template StringOf(ParameterStorageClassSet pstcs)
+{
+	alias StringOf_PStC!(pstcs, 0) StringOf;
+}
+
+
+/**
+	Specialized template for FunctionAttribute
+ */
+template StringOf(FunctionAttribute attr)
+{
+	static if (attr == FunctionAttribute.PURE    ) enum StringOf = "pure ";
+	static if (attr == FunctionAttribute.NOTHROW ) enum StringOf = "nothrow ";
+	static if (attr == FunctionAttribute.REF     ) enum StringOf = "ref ";
+	static if (attr == FunctionAttribute.PROPERTY) enum StringOf = "@property ";
+	static if (attr == FunctionAttribute.TRUSTED ) enum StringOf = "@trusted ";
+	static if (attr == FunctionAttribute.SAFE    ) enum StringOf = "@safe ";
+}
+
+
+/// 
+enum FunctionAttributeSet : FunctionAttribute
+{
+	NONE = FunctionAttribute.NONE,	//dummy
+}
+
+private template StringOf_FAs(alias attrs, size_t i)
+{
+	static if (attrs == 0)
+		enum StringOf_FAs = "";
+	else static if (attrs & (1<<i))
+		enum StringOf_FAs =
+			StringOf!(cast(FunctionAttribute)(attrs & (1<<i)))
+			~ StringOf_FAs!(cast(FunctionAttributeSet)(attrs & ~(1<<i)), i+1);
+	else
+		enum StringOf_FAs =
+			StringOf_FAs!(cast(FunctionAttributeSet)(attrs), i+1);
+}
+/**
+	Specialized template for FunctionAttributeSet
+*/
+template StringOf(FunctionAttributeSet attrs)
+{
+	alias StringOf_FAs!(attrs, 0) StringOf;
+}
+
+
+/**
+ */
+template ParameterInfo(alias Param)
+{
+	alias Identity!(Param.at!0) Type;
+	
+	enum ParameterStorageClassSet storageClass =
+		cast(ParameterStorageClassSet)(Param.at!1);
+	enum isScope = (storageClass & ParameterStorageClass.SCOPE) != 0;
+	enum isOut   = (storageClass & ParameterStorageClass.OUT  ) != 0;
+	enum isRef   = (storageClass & ParameterStorageClass.REF  ) != 0;
+	enum isLazy  = (storageClass & ParameterStorageClass.LAZY ) != 0;
+}
+
+
+/**
+ */
+template FunctionInfo(alias F)
+{
+	alias .ReturnType!F ReturnType;
+	
+	alias staticMap!(
+		ParameterInfo,
+		staticZip!(
+			Wrap!(ParameterTypeTuple!F),
+			Wrap!(ParameterStorageClassTuple!F))) Parameters;
+	
+	enum FunctionAttributeSet attributes =
+		cast(FunctionAttributeSet)(functionAttributes!F);
+	enum isPure     = (attributes & FunctionAttribute.PURE    ) != 0;
+	enum isNothrow  = (attributes & FunctionAttribute.NOTHROW ) != 0;
+	enum isRef      = (attributes & FunctionAttribute.REF     ) != 0;
+	enum isProperty = (attributes & FunctionAttribute.PROPERTY) != 0;
+	enum isTrusted  = (attributes & FunctionAttribute.TRUSTED ) != 0;
+	enum isSafe     = (attributes & FunctionAttribute.SAFE    ) != 0;
+}
+unittest
+{
+	alias ParameterStorageClass PStC;
+	alias FunctionAttribute FA;
+
+	void test(int, scope int, out int, ref int, lazy int) nothrow @safe { }
+	alias FunctionInfo!test T;
+	
+	static assert(is(T.ReturnType == void));
+	
+	alias Identity!(T.Parameters[0]) P0;
+	alias Identity!(T.Parameters[1]) P1;
+	alias Identity!(T.Parameters[2]) P2;
+	alias Identity!(T.Parameters[3]) P3;
+	alias Identity!(T.Parameters[4]) P4;
+	static assert(is(P0.Type == int));
+	static assert(is(P1.Type == int));
+	static assert(is(P2.Type == int));
+	static assert(is(P3.Type == int));
+	static assert(is(P4.Type == int));
+	
+	static assert(P0.storageClass == PStC.NONE);
+	static assert(P1.storageClass == PStC.SCOPE);
+	static assert(P2.storageClass == PStC.OUT);
+	static assert(P3.storageClass == PStC.REF);
+	static assert(P4.storageClass == PStC.LAZY);
+	static assert(StringOf!(T.Parameters[0].storageClass) == "");
+	static assert(StringOf!(T.Parameters[1].storageClass) == "scope ");
+	static assert(StringOf!(T.Parameters[2].storageClass) == "out ");
+	static assert(StringOf!(T.Parameters[3].storageClass) == "ref ");
+	static assert(StringOf!(T.Parameters[4].storageClass) == "lazy ");
+	
+	static assert(T.attributes == (FA.SAFE | FA.NOTHROW));
+	static assert(StringOf!(T.attributes) == "nothrow @safe ");
+}
+
+
+//----------------------------------------------------------------------------//
 // Declarations
 //----------------------------------------------------------------------------//
 
@@ -1927,14 +2103,12 @@ unittest
 }
 
 
-import std.traits : isSomeFunction;
-
 /**
  */
 template DeclareFunction(T, string name, string code) if (isSomeFunction!T)
 {
 private:
-	import std.traits, std.typetuple, std.conv;
+	import std.traits, std.typetuple;
 	
 	alias FunctionTypeOf!T F;
 	
