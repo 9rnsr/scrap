@@ -14,6 +14,11 @@ alias meta.isSame isSame;
 alias meta.allSatisfy allSatisfy;
 
 
+/*private*/ interface Adapted
+{
+	Object __getOriginal();
+}
+
 private template AdaptTo(Interfaces...)
 	if( allSatisfy!(isInterface, Interfaces) )
 {
@@ -71,13 +76,23 @@ private template AdaptTo(Interfaces...)
 			CovariantSignatures!T.Result.length == Idents.length;
 	}
 	
-	final class Impl(T) : Interfaces
+	class AdaptedImpl(T) : Adapted
+	{
+		T obj;
+		
+		this(T obj){ this.obj = obj; }
+		
+		final Object __getOriginal()
+		{
+			return obj;
+		}
+	}
+	final class Impl(T) : AdaptedImpl!T, Interfaces
 	{
 	private:
 		alias CovariantSignatures!T.Result CoTypes;
 		
-		T obj;
-		this(T o){ obj = o; }
+		this(T obj){ super(obj); }
 	
 	public:
 		template generateFun(string n)
@@ -104,6 +119,15 @@ template adaptTo(Interfaces...)
 	{
 		return new AdaptTo!Interfaces.Impl!T(obj);
 	}
+}
+
+/// 
+T getAdapted(T, I)(I src)
+{
+	if( auto c = cast(Adapted)src ){
+		return cast(T)c.__getOriginal();
+	}
+	return null;
 }
 
 
@@ -348,4 +372,38 @@ unittest
 	
 	Drawable d = a;
 	static assert(!is(typeof(d.draw) == const));
+}
+
+
+unittest
+{
+	static class C
+	{
+		int draw(){ return 10; }
+	//	Object __getOriginal(){ return null; }
+	}
+	static class X
+	{
+		int draw(){ return 20; }
+	//	Object __getOriginal(){ return null; }
+	}
+	interface Drawable
+	{
+		int draw();
+	//	Object __getOriginal();
+	}
+	
+	C c = new C();
+	X x = new X();
+	Drawable d;
+	
+	d = adaptTo!Drawable(c);
+	assert(d.draw() == 10);
+	assert(getAdapted!C(d) is c);
+	assert(getAdapted!X(d) is null);
+	
+	d = adaptTo!Drawable(x);
+	assert(d.draw() == 20);
+	assert(getAdapted!C(d) is null);
+	assert(getAdapted!X(d) is x);
 }
