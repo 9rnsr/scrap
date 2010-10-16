@@ -16,17 +16,17 @@ alias meta.allSatisfy allSatisfy;
 
 /*private*/ interface Adapted
 {
-	Object __getOriginal();
+	Object _getSource();
 }
 
-private template AdaptTo(Interfaces...)
-	if( allSatisfy!(isInterface, Interfaces) )
+private template AdaptTo(Targets...)
+	if( allSatisfy!(isInterface, Targets) )
 {
-	alias staticUniq!(staticMap!(VirtualFunctionsOf, Interfaces)) Idents;
+	alias staticUniq!(staticMap!(VirtualFunctionsOf, Targets)) TgtFuns;
 
-	template CovariantSignatures(T)
+	template CovariantSignatures(S)
 	{
-		alias VirtualFunctionsOf!T T_Idents;
+		alias VirtualFunctionsOf!S SrcFuns;
 		
 		template isExactMatch(alias a)
 		{
@@ -41,58 +41,53 @@ private template AdaptTo(Interfaces...)
 				 && isCovariantWith!(TypeOf!(a.Expand[0]), TypeOf!(a.Expand[1]));
 		}
 		
-		template CovariantIndexWith(size_t i)
+		template InheritsSrcFnFrom(size_t i)
 		{
-			alias staticCartesian!(Wrap!T_Idents, Wrap!(Idents[i])) Cartesian;
+			alias staticCartesian!(Wrap!SrcFuns, Wrap!(TgtFuns[i])) Cartesian;
 			
-			enum int j = staticIndexOfIf!(isExactMatch, Cartesian);
+			enum int j_ = staticIndexOfIf!(isExactMatch, Cartesian);
+			static if( j_ == -1 )
+				enum int j = staticIndexOfIf!(isCovariantMatch, Cartesian);
+			else
+				enum int j = j_;
+			
 			static if( j == -1 )
-			{
-				enum int k = staticIndexOfIf!(isCovariantMatch, Cartesian);
-			}
-			else
-			{
-				enum int k = j;
-			}
-			
-			static if( k == -1 )
-			{
 				alias Sequence!() Result;
-			}
 			else
-			{
-				alias Sequence!(TypeOf!(T_Idents[k])) Result;
-			}
+				alias Sequence!(SrcFuns[j]) Result;
 		}
 		alias staticMap!(
-			Instantiate!CovariantIndexWith.Returns!"Result",
-			staticIota!(0, staticLength!Idents)	//workaround @@@BUG4333@@@
+			TypeOf,
+			staticMap!(
+				Instantiate!InheritsSrcFnFrom.Returns!"Result",
+				staticIota!(0, staticLength!TgtFuns) //workaround @@@BUG4333@@@
+			)
 		) Result;
 	}
 	
-	template hasRequireMethods(T)
+	template hasRequireMethods(S)
 	{
 		enum hasRequireMethods = 
-			CovariantSignatures!T.Result.length == Idents.length;
+			CovariantSignatures!S.Result.length == TgtFuns.length;
 	}
 	
-	class AdaptedImpl(T) : Adapted
+	class AdaptedImpl(S) : Adapted
 	{
-		T obj;
+		S source;
 		
-		this(T obj){ this.obj = obj; }
+		this(S s){ source = s; }
 		
-		final Object __getOriginal()
+		final Object _getSource()
 		{
-			return obj;
+			return source;
 		}
 	}
-	final class Impl(T) : AdaptedImpl!T, Interfaces
+	final class Impl(S) : AdaptedImpl!S, Targets
 	{
 	private:
-		alias CovariantSignatures!T.Result CoTypes;
+		alias CovariantSignatures!S.Result CoTypes;
 		
-		this(T obj){ super(obj); }
+		this(S s){ super(s); }
 	
 	public:
 		template generateFun(string n)
@@ -100,8 +95,8 @@ private template AdaptTo(Interfaces...)
 			enum generateFun = mixin(expand!q{
 				mixin DeclareFunction!(
 					CoTypes[${n}],	// covariant
-					NameOf!(Idents[${n}]),
-					"return obj." ~ NameOf!(Idents[${n}]) ~ "(args);"
+					NameOf!(TgtFuns[${n}]),
+					"return source." ~ NameOf!(TgtFuns[${n}]) ~ "(args);"
 				);
 			});
 		}
@@ -109,23 +104,25 @@ private template AdaptTo(Interfaces...)
 			staticMap!(
 				generateFun,
 				staticMap!(StringOf, staticIota!(0,
-					staticLength!Idents))));	//workaround @@@BUG4333@@@
+					staticLength!TgtFuns))));	//workaround @@@BUG4333@@@
 	}
 }
 /// 
-template adaptTo(Interfaces...)
+template adaptTo(Targets...)
 {
-	auto adaptTo(T)(T obj) if( AdaptTo!Interfaces.hasRequireMethods!T )
+	/// 
+	auto adaptTo(S)(S s)
+		if( AdaptTo!Targets.hasRequireMethods!S )
 	{
-		return new AdaptTo!Interfaces.Impl!T(obj);
+		return new AdaptTo!Targets.Impl!S(s);
 	}
 }
 
 /// 
-T getAdapted(T, I)(I src)
+S getAdapted(S, I)(I from)
 {
-	if( auto c = cast(Adapted)src ){
-		return cast(T)c.__getOriginal();
+	if( auto c = cast(Adapted)from ){
+		return cast(S)c._getSource();
 	}
 	return null;
 }
@@ -137,7 +134,7 @@ unittest
 	static class A
 	{
 		int draw(){ return 10; }
-		//Object __getOriginal();
+		//Object _getSource();
 		//limitation : can't contain this name
 	}
 	static class AA : A
