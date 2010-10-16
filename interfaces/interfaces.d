@@ -130,30 +130,28 @@ T getAdapted(T, I)(I src)
 	return null;
 }
 
-
 unittest
 {
-	static class C
+	//class A
+	//limitation: can't use nested class
+	static class A
 	{
 		int draw(){ return 10; }
+		//Object __getOriginal();
+		//limitation : can't contain this name
 	}
-	interface Drawable
+	static class AA : A
 	{
-		int draw();
+		int draw(){ return 100; }
 	}
-	
-	auto c = new C();
-	Drawable d = adaptTo!Drawable(c);
-	assert(d.draw() == 10);
-}
-
-
-unittest
-{
-	static class C
+	static class B
 	{
-		int draw(){ return 10; }
+		int draw(){ return 20; }
 		int reflesh(){ return 20; }
+	}
+	static class X
+	{
+		void undef(){}
 	}
 	interface Drawable
 	{
@@ -162,94 +160,63 @@ unittest
 	interface Refleshable
 	{
 		int reflesh();
+		final int stop(){ return 0; }
+		static int refleshAll(){ return 100; }
 	}
 	
-	auto c = new C();
-	auto a = adaptTo!(Drawable, Refleshable)(c);
-	Drawable    d = a;
-	Refleshable r = a;
-	assert(a.draw() == 10);
-	assert(d.draw() == 10);
-	assert(a.reflesh() == 20);
-	assert(r.reflesh() == 20);
-}
-
-
-/+unittest
-{
-	class N
-	{
-		int draw(){ return 10; }
-	}
-	interface Drawable
-	{
-		int draw();
-	}
-	
-	auto n = new N();
-	auto d = adaptTo!Drawable(n);
-	assert(d.draw() == 10);
-}+/
-
-
-unittest
-{
-	static class A
-	{
-		int draw(){ return 10; }
-	}
-	static class B : A
-	{
-		int draw(){ return 20; }
-	}
-	
-	interface Drawable
-	{
-		int draw();
-	}
-	
-	auto a = new A();
-	auto b = new B();
-	
+	A a = new A();
+	B b = new B();
 	Drawable d;
-	d = adaptTo!Drawable(a);
-	assert(d.draw() == 10);
-	d = adaptTo!Drawable(b);
-	assert(d.draw() == 20);
-	d = adaptTo!Drawable(cast(A)b);
-	assert(d.draw() == 20);
+	Refleshable r;
+	{
+		auto m = adaptTo!Drawable(a);
+		d = m;
+		assert(d.draw() == 10);
+		assert(getAdapted!A(d) is a);
+		assert(getAdapted!B(d) is null);
+		
+		d = adaptTo!Drawable(b);
+		assert(d.draw() == 20);
+		assert(getAdapted!A(d) is null);
+		assert(getAdapted!B(d) is b);
+		
+		AA aa = new AA();
+		d = adaptTo!Drawable(cast(A)aa);
+		assert(d.draw() == 100);
+		
+		static assert(!__traits(compiles,
+			d = adaptTo!Drawable(new X())));
+		
+	}
+	{
+		auto m = adaptTo!(Drawable, Refleshable)(b);
+		d = m;
+		r = m;
+		assert(m.draw() == 20);
+		assert(d.draw() == 20);
+		assert(m.reflesh() == 20);
+		assert(r.reflesh() == 20);
+		
+		// call final/static function in interface
+		assert(m.stop() == 0);
+		assert(m.refleshAll() == 100);
+		assert(typeof(m).refleshAll() == 100);
+	}
+	
 }
-
 
 unittest
 {
 	static class A
 	{
-		int draw(){ return 10; }
-	}
-	
-	interface Drawable
-	{
-		int draw();
-		static int f(){ return 20; }
-	}
-	
-	Drawable d = adaptTo!Drawable(new A());
-	assert(d.draw() == 10);
-	assert(d.f() == 20);
-	assert(Drawable.f() == 20);
-}
-
-
-unittest
-{
-	static class A
-	{
-		int draw()				{ return 10; }
-		int draw() const		{ return 20; }
-		int draw() shared		{ return 30; }
+		int draw()              { return 10; }
+		int draw(int v)         { return 11; }
+		
+		int draw() const        { return 20; }
+		int draw() shared       { return 30; }
 		int draw() shared const { return 40; }
-		int draw() immutable	{ return 50; }
+		int draw() immutable    { return 50; }
+		
 	}
 	
 	interface Drawable
@@ -260,150 +227,56 @@ unittest
 		int draw() shared const;
 		int draw() immutable;
 	}
+	interface Drawable2
+	{
+		int draw(int v);
+	}
 	
 	auto  a = new A();
 	auto ia = new immutable(A)();
 	{
-						Drawable   d = adaptTo!Drawable(a);
-		const			Drawable  cd = adaptTo!Drawable(a);
-		shared			Drawable  sd = adaptTo!Drawable(a);
-		shared const	Drawable scd = adaptTo!Drawable(a);
-		immutable		Drawable  id = adaptTo!Drawable(ia);
+		             Drawable   d = adaptTo!Drawable(a);
+		const        Drawable  cd = adaptTo!Drawable(a);
+		shared       Drawable  sd = adaptTo!Drawable(a);
+		shared const Drawable scd = adaptTo!Drawable(a);
+		immutable    Drawable  id = adaptTo!Drawable(ia);
 		assert(  d.draw() == 10);
 		assert( cd.draw() == 20);
 		assert( sd.draw() == 30);
 		assert(scd.draw() == 40);
 		assert( id.draw() == 50);
 	}
-}
-
-
-unittest
-{
-	static class A
 	{
-		int draw()				{ return 1; }
-		int draw() const		{ return 10; }
-		int draw(int v) 		{ return v*2; }
-		int draw(int v, int n)	{ return v*n; }
-	}
-	static class B
-	{
-		int draw()				{ return 2; };
-	}
-	static class X
-	{
-		void undef(){}
-	}
-	static class Y
-	{
-		void draw(double f){}
-	}
-
-	{
-		interface Drawable1
-		{
-			int draw();
-		}
-		
-		Drawable1 d = adaptTo!Drawable1(new A());
-		assert(d.draw() == 1);
-		
-		d = adaptTo!Drawable1(new B());
-		assert(d.draw() == 2);
-		
-		static assert(!__traits(compiles, d = adaptTo!Drawable1(new X())));
-	}
-	{
-		interface Drawable2
-		{
-			int draw(int v);
-		}
-		
-		Drawable2 d = adaptTo!Drawable2(new A());
+		Drawable2 d = adaptTo!Drawable2(a);
 		static assert(!__traits(compiles, d.draw()));
-		assert(d.draw(8) == 16);
-	}
-	{
-		interface Drawable3
-		{
-			int draw(int v, int n);
-		}
-		
-		Drawable3 d = adaptTo!Drawable3(new A());
-		assert(d.draw(8, 8) == 64);
-		
-		static assert(!__traits(compiles, d = adaptTo!Drawable3(new Y())));
+		assert(d.draw(0) == 11);
 	}
 }
-
 
 unittest
 {
 	interface Drawable
 	{
 		long draw();
+		int reflesh();
 	}
-	static class C
+	static class A
 	{
-		int draw(){ return 10; }	// covariant return types
+		int draw(){ return 10; }			// covariant return types
+		int reflesh()const{ return 20; }	// covariant storage classes
 	}
-	static assert(isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
 	
-	auto a = adaptTo!Drawable(new C());
+	auto a = new A();
+	auto m = adaptTo!Drawable(a);
+	Drawable d = m;
+	
+	static assert(isCovariantWith!(typeof(A.draw), typeof(Drawable.draw)));
 	static assert(is(typeof(a.draw()) == int));
-	
-	Drawable d = a;
+	static assert(is(typeof(m.draw()) == int));		//same ReturnType with a
 	static assert(is(typeof(d.draw()) == long));
-}
-unittest
-{
-	interface Drawable
-	{
-		int draw();
-	}
-	static class C
-	{
-		int draw()const{ return 10; }	// covariant storage classes
-	}
-	static assert(isCovariantWith!(typeof(C.draw), typeof(Drawable.draw)));
-	auto a = adaptTo!Drawable(new C());
-	static assert(is(typeof(a.draw) == const));
-	
-	Drawable d = a;
-	static assert(!is(typeof(d.draw) == const));
-}
 
-
-unittest
-{
-	static class C
-	{
-		int draw(){ return 10; }
-	//	Object __getOriginal(){ return null; }
-	}
-	static class X
-	{
-		int draw(){ return 20; }
-	//	Object __getOriginal(){ return null; }
-	}
-	interface Drawable
-	{
-		int draw();
-	//	Object __getOriginal();
-	}
-	
-	C c = new C();
-	X x = new X();
-	Drawable d;
-	
-	d = adaptTo!Drawable(c);
-	assert(d.draw() == 10);
-	assert(getAdapted!C(d) is c);
-	assert(getAdapted!X(d) is null);
-	
-	d = adaptTo!Drawable(x);
-	assert(d.draw() == 20);
-	assert(getAdapted!C(d) is null);
-	assert(getAdapted!X(d) is x);
+	static assert(isCovariantWith!(typeof(A.reflesh), typeof(Drawable.reflesh)));
+	static assert( is(typeof(a.reflesh) == const));
+	static assert( is(typeof(m.reflesh) == const));	//same StorageClass with a
+	static assert(!is(typeof(d.reflesh) == const));
 }
