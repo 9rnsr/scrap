@@ -14,7 +14,7 @@ alias meta.isSame isSame;
 alias meta.allSatisfy allSatisfy;
 
 
-/*private*/ interface Adapted
+/*private*/ interface Structural
 {
 	Object _getSource();
 }
@@ -71,7 +71,7 @@ private template AdaptTo(Targets...)
 			CovariantSignatures!S.Result.length == TgtFuns.length;
 	}
 	
-	class AdaptedImpl(S) : Adapted
+	class AdaptedImpl(S) : Structural
 	{
 		S source;
 		
@@ -107,6 +107,10 @@ private template AdaptTo(Targets...)
 					staticLength!TgtFuns))));	//workaround @@@BUG4333@@@
 	}
 }
+
+
+version(all)
+{
 /// 
 template adaptTo(Targets...)
 {
@@ -121,12 +125,105 @@ template adaptTo(Targets...)
 /// 
 S getAdapted(S, I)(I from)
 {
-	if( auto c = cast(Adapted)from ){
+	if( auto c = cast(Structural)from ){
 		return cast(S)c._getSource();
 	}
 	return null;
 }
+}
+else
+{
 
+//	template isMutable(T)
+//	{
+//		enum isMutable = is(T==Unqual!T);
+//	}
+//	template isConst(T)
+//	{
+//		static if (is(T U==const(U)) && is(Unqual!U==U))
+//			enum isConst = true;
+//		else
+//			enum isConst = false;
+//	}
+//	template isShared(T)
+//	{
+//		static if (is(T U==shared(U)) && is(Unqual!U==U))
+//			enum isShared = true;
+//		else
+//			enum isShared = false;
+//	}
+//	template isSharedConst(T)
+//	{
+//		enum isSharedConst = is(T==const) && is(T==shared);
+//	}
+//	template isImmutable(T)
+//	{
+//		enum isImmutable = is(T==immutable);
+//	}
+
+/// 
+template adaptTo(Targets...)
+{
+	/// 
+	auto adaptTo(S)(S s)
+	{
+		static if (Targets.length == 1)
+		{
+			alias Targets[0] T;
+			
+			static if (is(S : T))
+				return cast(T)(s);	//static_cast
+			else static if (is(T : S))
+				return cast(T)(s);	//dynamic_cast
+			else
+			{
+				// try structual_cast
+				
+			//	//workaround for is(class : qualified interface) == true
+			//	pragma(msg, "T=", T, ", S=", S);
+			//	// TODO: this check only T extends structurally from S.
+			//	static if (isMutable!S)		static assert(isMutable!T);
+			//	static if (isConst!S)		static assert(isMutable!T || isConst!T || isImmutable!T);
+			//	static if (isShared!S)		static assert(isShared!T);
+			//	static if (isSharedConst!S)	static assert(isShared!T || isSharedConst!T);
+			//	static if (isImmutable!S)	static assert(isImmutable!T);
+			//	
+				if (auto a = cast(Structural)s)
+				{
+				//	if (auto t = cast(T)a._getSource())	//why not allowed this?
+					auto t = cast(T)a._getSource();
+					// TODO: runtime check with storage-class contravariance
+					// Does built-in dynamic_cast support it?
+					// Elsewise, cross-cast idiom breaks const-correctness.
+					if (t)
+						// ejecting from structural wrapping succeeded
+						return cast(T)(t);
+				}
+				
+				static if (is(T == class))
+					return cast(T)(null);
+				else static if (is(T == interface) &&
+								AdaptTo!Targets.hasRequireMethods!S)
+					// enclosing into structural wrapping
+					return cast(T)(new AdaptTo!Targets.Impl!S(s));
+				else
+					static assert(0,
+						"structual_cast from "~S.stringof~
+						" to "~T.stringof~" does not support");
+			}
+			static assert(is(typeof(return) == T));
+		}
+		else static if (allSatisfy!(isInterface, Targets) &&
+						AdaptTo!Targets.hasRequireMethods!S)
+			return new AdaptTo!Targets.Impl!S(s);
+		else
+			static assert(0,
+				S.stringof ~ " does not have structual conformance "
+				"to " ~ Targets.stringof ~ ".");
+	}
+}
+alias adaptTo getAdapted;
+}
 unittest
 {
 	//class A
@@ -230,13 +327,14 @@ unittest
 	}
 	
 	auto  a = new A();
+	auto sa = new shared(A)();
 	auto ia = new immutable(A)();
 	{
-		             Drawable   d = adaptTo!Drawable(a);
-		const        Drawable  cd = adaptTo!Drawable(a);
-		shared       Drawable  sd = adaptTo!Drawable(a);
-		shared const Drawable scd = adaptTo!Drawable(a);
-		immutable    Drawable  id = adaptTo!Drawable(ia);
+		             Drawable   d = adaptTo!(             Drawable )(a);
+		const        Drawable  cd = adaptTo!(       const(Drawable))(a);
+		shared       Drawable  sd = adaptTo!(shared      (Drawable))(sa);
+		shared const Drawable scd = adaptTo!(shared const(Drawable))(sa);
+		immutable    Drawable  id = adaptTo!(immutable   (Drawable))(ia);
 		assert(  d.draw() == 10);
 		assert( cd.draw() == 20);
 		assert( sd.draw() == 30);
@@ -264,16 +362,15 @@ unittest
 	}
 	
 	auto a = new A();
-	auto m = adaptTo!Drawable(a);
-	Drawable d = m;
-	
-	static assert(isCovariantWith!(typeof(A.draw), typeof(Drawable.draw)));
+	auto d = adaptTo!Drawable(a);	// supports return-typ/storage-class covariance
+	assert(d.draw() == 10);
+	assert(d.reflesh() == 20);
+/+	static assert(isCovariantWith!(typeof(A.draw), typeof(Drawable.draw)));
 	static assert(is(typeof(a.draw()) == int));
-	static assert(is(typeof(m.draw()) == int));		//same ReturnType with a
 	static assert(is(typeof(d.draw()) == long));
 
 	static assert(isCovariantWith!(typeof(A.reflesh), typeof(Drawable.reflesh)));
 	static assert( is(typeof(a.reflesh) == const));
-	static assert( is(typeof(m.reflesh) == const));	//same StorageClass with a
 	static assert(!is(typeof(d.reflesh) == const));
++/
 }
