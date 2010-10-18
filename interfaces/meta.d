@@ -1546,22 +1546,62 @@ unittest
 }
 
 
+version(none)
+{
 /**
  */
-template isInstantiatedWith(alias A, alias T)
+template isInstantiatedWith(alias T, alias X)
 {
-	static if (__traits(compiles, Identifier!A))
+	static if (is(T))	// use isType ?
 	{
-		enum isInstantiatedWith = 
-			chompPrefix(
-				Identifier!A,
-				"__T" ~ to!string(Identifier!T.length) ~ Identifier!T)
-			!= Identifier!A;
+		static assert(0);	// doesn't work.
+		
+//		pragma(msg, "> ", T, "[" ~ T.mangleof ~ "], ", X);
+		static if (is(Unqual!T Unused : X!Specs, Specs...))
+		{
+			// doesn't work.
+			// -> mangleof使えば可能か？
+			enum isInstantiatedWith = true;
+		}
+		else
+		{
+			enum isInstantiatedWith = false;
+		}
 	}
 	else
 	{
-		enum isInstantiatedWith = false;
+//		pragma(msg, "$ ", T, ", ", X);
+		static if (__traits(compiles, Identifier!T))
+		{
+			enum isInstantiatedWith = 
+				chompPrefix(
+					Identifier!T,
+					"__T" ~
+					to!string(Identifier!X.length) ~
+					Identifier!X)
+				!= Identifier!T;
+		}
+		else
+		{
+			enum isInstantiatedWith = false;
+		}
 	}
+}
+
+version(unittest)
+{
+	template TestTemplate(T...)
+	{
+	}
+	static assert(isInstantiatedWith!(TestTemplate!int, TestTemplate));
+	
+	
+	struct TestType(T...)
+	{
+	}
+//	pragma(msg, is(typeof(TestType!int)));
+//	static assert(isInstantiatedWith!(TestType!int, TestType));
+}
 }
 
 
@@ -1967,41 +2007,16 @@ template functionStorageClass(func...) if (func.length==1)
         static assert(0, "argument is not a function");
 }
 
-/**
-	Specialized template for FunctionStorageClass
- */
-template StringOf(FunctionStorageClass pstc)
+/// 
+enum ParameterStorageClasses : ParameterStorageClass
 {
-	static if (pstc & FunctionStorageClass.NONE        ) enum StringOf = "";
-	static if (pstc & FunctionStorageClass.CONST       ) enum StringOf = "const ";
-	static if (pstc & FunctionStorageClass.SHARED      ) enum StringOf = "shared ";
-	static if (pstc & FunctionStorageClass.IMMUTABLE   ) enum StringOf = "immutable ";
+	NONE = ParameterStorageClass.NONE,	//dummy
 }
 
 /// 
 enum FunctionStorageClasses : FunctionStorageClass
 {
 	NONE = FunctionStorageClass.NONE,	//dummy
-}
-
-private template StringOf_FStC(alias fstcs, size_t i)
-{
-	static if (fstcs == 0)
-		enum StringOf_FStC = "";
-	else static if (fstcs & (1<<i))
-		enum StringOf_FStC =
-			StringOf!(cast(FunctionStorageClass)(fstcs & (1<<i)))
-			~ StringOf_FStC!(cast(FunctionStorageClasses)(fstcs & ~(1<<i)), i+1);
-	else
-		enum StringOf_FStC =
-			StringOf_FStC!(cast(FunctionStorageClasses)(fstcs), i+1);
-}
-/**
-	Specialized template for FunctionStorageClasses
- */
-template StringOf(FunctionStorageClasses fstcs)
-{
-	alias StringOf_FStC!(fstcs, 0) StringOf;
 }
 
 
@@ -2016,34 +2031,6 @@ template StringOf(ParameterStorageClass pstc)
 	static if (pstc & ParameterStorageClass.LAZY ) enum StringOf = "lazy ";
 }
 
-
-/// 
-enum ParameterStorageClasses : ParameterStorageClass
-{
-	NONE = ParameterStorageClass.NONE,	//dummy
-}
-
-private template StringOf_PStC(alias pstcs, size_t i)
-{
-	static if (pstcs == 0)
-		enum StringOf_PStC = "";
-	else static if (pstcs & (1<<i))
-		enum StringOf_PStC =
-			StringOf!(cast(ParameterStorageClass)(pstcs & (1<<i)))
-			~ StringOf_PStC!(cast(ParameterStorageClasses)(pstcs & ~(1<<i)), i+1);
-	else
-		enum StringOf_PStC =
-			StringOf_PStC!(cast(ParameterStorageClasses)(pstcs), i+1);
-}
-/**
-	Specialized template for ParameterStorageClasses
- */
-template StringOf(ParameterStorageClasses pstcs)
-{
-	alias StringOf_PStC!(pstcs, 0) StringOf;
-}
-
-
 /**
 	Specialized template for FunctionAttribute
  */
@@ -2057,6 +2044,59 @@ template StringOf(FunctionAttribute attr)
 	static if (attr == FunctionAttribute.SAFE    ) enum StringOf = "@safe ";
 }
 
+/**
+	Specialized template for FunctionStorageClass
+ */
+template StringOf(FunctionStorageClass pstc)
+{
+	static if (pstc & FunctionStorageClass.NONE     ) enum StringOf = "";
+	static if (pstc & FunctionStorageClass.CONST    ) enum StringOf = "const ";
+	static if (pstc & FunctionStorageClass.SHARED   ) enum StringOf = "shared ";
+	static if (pstc & FunctionStorageClass.IMMUTABLE) enum StringOf = "immutable ";
+}
+
+/**
+	Specialized template for ParameterStorageClasses
+ */
+template StringOf(ParameterStorageClasses pstcs)
+{
+	enum StringOf =
+		DeclareTemplate!q{
+			alias Identity!(args[0]) pstcs;
+			alias Identity!(args[1]) i;
+			static if (pstcs == 0)
+				enum Result = "";
+			else static if (pstcs & (1<<i))
+				enum Result =
+					StringOf!(cast(ParameterStorageClass)(pstcs & (1<<i)))
+					~ Self!(cast(ParameterStorageClasses)(pstcs & ~(1<<i)), i+1).Result;
+			else
+				enum Result =
+					Self!(cast(ParameterStorageClasses)(pstcs), i+1).Result;
+	}.With!(pstcs, 0).Result;
+}
+
+/**
+	Specialized template for FunctionStorageClasses
+ */
+template StringOf(FunctionStorageClasses fstcs)
+{
+	enum StringOf =
+		DeclareTemplate!q{
+			alias Identity!(args[0]) fstcs;
+			alias Identity!(args[1]) i;
+			static if (fstcs == 0)
+				enum Result = "";
+			else static if (fstcs & (1<<i))
+				enum Result =
+					StringOf!(cast(FunctionStorageClass)(fstcs & (1<<i)))
+					~ Self!(cast(FunctionStorageClasses)(fstcs & ~(1<<i)), i+1).Result;
+			else
+				enum Result =
+					Self!(cast(FunctionStorageClasses)(fstcs), i+1).Result;
+		}.With!(fstcs, 0).Result;
+}
+
 
 /// 
 enum FunctionAttributes : FunctionAttribute
@@ -2064,7 +2104,7 @@ enum FunctionAttributes : FunctionAttribute
 	NONE = FunctionAttribute.NONE,	//dummy
 }
 
-private template StringOf_FAs(alias attrs, size_t i)
+/+private template StringOf_FAs(alias attrs, size_t i)
 {
 	static if (attrs == 0)
 		enum StringOf_FAs = "";
@@ -2075,13 +2115,27 @@ private template StringOf_FAs(alias attrs, size_t i)
 	else
 		enum StringOf_FAs =
 			StringOf_FAs!(cast(FunctionAttributes)(attrs), i+1);
-}
+}+/
 /**
 	Specialized template for FunctionAttributes
 */
 template StringOf(FunctionAttributes attrs)
 {
-	alias StringOf_FAs!(attrs, 0) StringOf;
+//	alias StringOf_FAs!(attrs, 0) StringOf;
+	enum StringOf =
+		DeclareTemplate!q{
+			alias Identity!(args[0]) attrs;
+			alias Identity!(args[1]) i;
+			static if (attrs == 0)
+				enum Result = "";
+			else static if (attrs & (1<<i))
+				enum Result =
+					.StringOf!(cast(FunctionAttribute)(attrs & (1<<i)))
+					~ Self!(cast(FunctionAttributes)(attrs & ~(1<<i)), i+1).Result;
+			else
+				enum Result =
+					Self!(cast(FunctionAttributes)(attrs), i+1).Result;
+		}.With!(attrs, 0).Result;
 }
 
 
@@ -2130,6 +2184,7 @@ template FunctionTypeInfo(A...) if (is(FunctionTypeOf!A))
 	enum isTrusted  = (attributes & FunctionAttribute.TRUSTED ) != 0;
 	enum isSafe     = (attributes & FunctionAttribute.SAFE    ) != 0;
 }
+
 unittest
 {
 	alias ParameterStorageClass PStC;
@@ -2198,6 +2253,7 @@ template Declare(alias wrap)
 {
 	mixin Declare!(wrap.Expand);
 }
+
 unittest
 {
 	mixin Declare!(int, "a");
@@ -2265,7 +2321,6 @@ public:
 	}));
 }
 
-
 unittest
 {
 	static class C
@@ -2310,3 +2365,47 @@ unittest
 	assert(scc.a() == 40);
 	assert( ic.a() == 50);
 }
+
+
+/**
+	Self	declared template itself
+	args	tuple of template parameters
+ */
+private template DeclareTemplateImpl(string def)
+{
+	template Self(args...)
+	{
+		mixin(def);
+	}
+	alias Instantiate!Self Result;
+}
+template DeclareTemplate(string def)	// ditto
+{
+	alias DeclareTemplateImpl!def.Result DeclareTemplate;
+}
+
+
+/**
+ */
+template ToDelegate(F) if (is(FunctionTypeOf!F == function))
+{
+	alias 
+		DeclareTemplate!q{
+			struct generate
+			{
+				mixin DeclareFunction!(args[0], "dummy", q{
+					static if (!is(typeof(return) == void))
+						return typeof(return).init;
+				});
+			}
+			alias typeof(&((new generate()).dummy)) Result;
+		}.With!(FunctionTypeOf!F).Result
+		ToDelegate;
+}
+unittest
+{
+	alias void function(int, float) @safe F;
+	static assert(is(ToDelegate!F == void delegate(int, float) @safe));
+}
+
+
