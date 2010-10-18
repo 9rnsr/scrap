@@ -2388,7 +2388,7 @@ template DeclareTemplate(string def)	// ditto
 
 /**
  */
-template ToDelegate(F) if (is(FunctionTypeOf!F == function))
+template DelegateTypeOf(F) if (is(FunctionTypeOf!F == function))
 {
 	alias 
 		DeclareTemplate!q{
@@ -2401,12 +2401,12 @@ template ToDelegate(F) if (is(FunctionTypeOf!F == function))
 			}
 			alias typeof(&((new generate()).dummy)) Result;
 		}.With!(FunctionTypeOf!F).Result
-		ToDelegate;
+		DelegateTypeOf;
 }
 unittest
 {
 	alias void function(int, float) @safe F;
-	static assert(is(ToDelegate!F == void delegate(int, float) @safe));
+	static assert(is(DelegateTypeOf!F == void delegate(int, float) @safe));
 }
 
 
