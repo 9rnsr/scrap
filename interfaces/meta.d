@@ -2274,6 +2274,7 @@ unittest
 template DeclareFunction(F, string name, string code)
 {
 private:
+	import std.traits : staticLength;
 	alias FunctionTypeInfo!F FTI;
 	alias staticMap!(
 		Instantiate!q{ a.at!0 ~ a.at!1 ~ " a" ~ to!string(a.at!2) }.With,
