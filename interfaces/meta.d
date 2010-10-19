@@ -2104,24 +2104,11 @@ enum FunctionAttributes : FunctionAttribute
 	NONE = FunctionAttribute.NONE,	//dummy
 }
 
-/+private template StringOf_FAs(alias attrs, size_t i)
-{
-	static if (attrs == 0)
-		enum StringOf_FAs = "";
-	else static if (attrs & (1<<i))
-		enum StringOf_FAs =
-			StringOf!(cast(FunctionAttribute)(attrs & (1<<i)))
-			~ StringOf_FAs!(cast(FunctionAttributes)(attrs & ~(1<<i)), i+1);
-	else
-		enum StringOf_FAs =
-			StringOf_FAs!(cast(FunctionAttributes)(attrs), i+1);
-}+/
 /**
 	Specialized template for FunctionAttributes
 */
 template StringOf(FunctionAttributes attrs)
 {
-//	alias StringOf_FAs!(attrs, 0) StringOf;
 	enum StringOf =
 		DeclareTemplate!q{
 			alias Identity!(args[0]) attrs;
