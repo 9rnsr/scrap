@@ -1735,18 +1735,18 @@ template mixinAll(mixins...)
 
 private @trusted
 {
-	bool isoctdigit(dchar c)
-	{
-		return '0'<=c && c<='7';
-	}
-	bool ishexdigit(dchar c)
-	{
-		return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f');
-	}
+//	bool isoctdigit(dchar c) pure nothrow @safe
+//	{
+//		return '0'<=c && c<='7';
+//	}
+//	bool ishexdigit(dchar c) pure nothrow @safe
+//	{
+//		return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f');
+//	}
 
 	enum Kind
 	{
-		METACODE=0,
+		METACODE,
 		CODESTR,
 		STR_IN_METACODE,
 		ALT_IN_METACODE,
@@ -1756,7 +1756,6 @@ private @trusted
 
 	struct Slice
 	{
-		version(RunTest) uint level = 0;
 		Kind current;
 		string buffer;
 		size_t eaten;
@@ -1781,7 +1780,6 @@ private @trusted
 			if (res)
 			{
 				eaten += s.length;
-	version(RunTest) if (!__ctfe) writefln("chomp!%s(%s, %s), [%s] / [%s]", level, s, current, head, tail);
 			}
 			return res;
 		}
@@ -1790,7 +1788,6 @@ private @trusted
 			if (eaten + n <= buffer.length)
 			{
 				eaten += n;
-	version(RunTest) if (!__ctfe) writefln("chomp!%s(%s, %s), [%s] / [%s]", level, n, current, head, tail);
 			}
 		}
 		
@@ -1820,7 +1817,6 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.STR_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				while (s.exist && !s.chomp(`"`))
 				{
 					if (s.parseVar()) continue;
@@ -1833,7 +1829,6 @@ private @trusted
 						? save_head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
 						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
-	version(RunTest) if (!__ctfe) level = s.level - 1;
 				
 				return true;
 			}
@@ -1849,21 +1844,17 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.ALT_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				while (s.exist && !s.chomp("`"))
 				{
 					if (s.parseVar()) continue;
 					s.chomp(1);
 				}
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", s.level, s.current, s.head, s.tail);
 				this = Slice(
 					current,
 					(current == Kind.METACODE
 						? save_head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
 						: save_head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
 					s.tail);
-	version(RunTest) if (!__ctfe) level = s.level - 1;
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", level, current, head, tail);
 				return true;
 			}
 			else
@@ -1878,7 +1869,6 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.RAW_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				while (s.exist && !s.chomp(`"`))
 				{
 					if (s.parseVar()) continue;
@@ -1891,7 +1881,6 @@ private @trusted
 						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
 				
-	version(RunTest) if (!__ctfe) level = s.level - 1;
 				return true;
 			}
 			else
@@ -1906,7 +1895,6 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.QUO_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				if (s.parseCode!`}`())
 				{
 					this = Slice(
@@ -1916,7 +1904,6 @@ private @trusted
 							: save_head[] ~ s.head),
 						s.tail);
 				}
-	version(RunTest) if (!__ctfe) level = s.level - 1;
 				return true;
 			}
 			else
@@ -1942,14 +1929,12 @@ private @trusted
 				auto s = Slice(
 					Kind.METACODE,
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				s.parseCode!`}`();
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(var, %s), [%s] / [%s]", s.level, s.current, s.head, s.tail);
 				
 				string open, close;
 				switch(current)
 				{
-				case Kind.CODESTR		:	open = "`" , close = "`";	break;
+				case Kind.CODESTR:			open = "`" , close = "`";	break;
 				case Kind.STR_IN_METACODE:	open = `"` , close = `"`;	break;
 				case Kind.ALT_IN_METACODE:	open = "`" , close = "`";	break;
 				case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
@@ -1960,8 +1945,6 @@ private @trusted
 					current,
 					(head[0..$-2] ~ close ~ " ~ " ~ s.head[0..$-1] ~ " ~ " ~ open),
 					s.tail);
-	version(RunTest) if (!__ctfe) level = s.level - 1;
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(var, %s), [%s] / [%s]", level, current, head, tail);
 				return true;
 			}
 			else
