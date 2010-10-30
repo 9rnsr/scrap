@@ -55,31 +55,16 @@ unittest
 
 
 	// var in string in var
-//	writeln(   expandImpl(q{${ Temp!" x ${op} y " }}) );
-//	writeln(       expand!q{${ Temp!" x ${op} y " }}  );	// CTFE bug?
-//	writeln( mixin(expand!q{${ Temp!" x ${op} y " }}) );
-//	writeln( mixin(`` ~  Temp!(" x " ~ op ~ " y ")  ~ ``) );
-//	static assert(mixin(expand!q{${ Temp!" x ${op} y " }}) == "expanded_Temp");
+	static assert(mixin(expand!q{${ Temp!" x ${op} y " }}) == "expanded_Temp");
 
 	// var in raw-string in var
-//	writeln(   expandImpl(q{${ Temp!r" x ${op} y " }}) );
-//	writeln(       expand!q{${ Temp!r" x ${op} y " }}  );	// CTFE bug?
-//	writeln( mixin(expand!q{${ Temp!r" x ${op} y " }}) );
-//	static assert(mixin(expand!q{${ Temp!r" x ${op} y "} }) == "expanded_Temp");
+	static assert(mixin(expand!q{${ Temp!r" x ${op} y " }}) == "expanded_Temp");
 
 	// var in alt-string in var
-//	writeln(   expandImpl(q{${ Temp!` x ${op} y ` }}) );
-//	writeln(       expand!q{${ Temp!` x ${op} y ` }}  );	// CTFE bug?
-//	writeln( mixin(expand!q{${ Temp!` x ${op} y ` }}) );
-//	static assert(mixin(expand!q{${ Temp!` x ${op} y ` }}) == "expanded_Temp");
+	static assert(mixin(expand!q{${ Temp!` x ${op} y ` }}) == "expanded_Temp");
 
 	// var in quoted-string in var
-//	writeln(   expandImpl(q{${ Temp!q{ x ${op} y } }}) );
-//	writeln(       expand!q{${ Temp!q{ x ${op} y } }}  );	// CTFE bug?
-//	writeln( mixin(expand!q{${ Temp!q{ x ${op} y } }}) );
-//	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
-//	static assert(`` ~  Temp!(q{ x } ~ op ~ q{ y })  ~ `` == "expanded_Temp");
-
+	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
 
 /+
 	// --------

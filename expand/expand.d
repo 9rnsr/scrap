@@ -121,6 +121,8 @@ private @trusted
 		{
 			if (chomp(`"`))
 			{
+				auto save_head = head;	// workaround for ctfe
+				
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.STR_IN_METACODE : current),
 					tail);
@@ -134,8 +136,8 @@ private @trusted
 				this = Slice(
 					current,
 					(current == Kind.METACODE
-						? head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
-						: head[0..$] ~ s.head[0..$]),
+						? save_head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
+						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
 	version(RunTest) if (!__ctfe) level = s.level - 1;
 				
@@ -148,6 +150,8 @@ private @trusted
 		{
 			if (chomp("`"))
 			{
+				auto save_head = head;	// workaround for ctfe
+				
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.ALT_IN_METACODE : current),
 					tail);
@@ -161,8 +165,8 @@ private @trusted
 				this = Slice(
 					current,
 					(current == Kind.METACODE
-						? head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
-						: head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
+						? save_head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
+						: save_head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
 					s.tail);
 	version(RunTest) if (!__ctfe) level = s.level - 1;
 	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", level, current, head, tail);
@@ -175,6 +179,8 @@ private @trusted
 		{
 			if (chomp(`r"`))
 			{
+				auto save_head = head;	// workaround for ctfe
+				
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.RAW_IN_METACODE : current),
 					tail);
@@ -187,8 +193,8 @@ private @trusted
 				this = Slice(
 					current,
 					(current == Kind.METACODE
-						? head[0..$-2] ~ `(r"` ~ s.head[0..$-1] ~ `")`
-						: head[0..$] ~ s.head[0..$]),
+						? save_head[0..$-2] ~ `(r"` ~ s.head[0..$-1] ~ `")`
+						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
 				
 	version(RunTest) if (!__ctfe) level = s.level - 1;
@@ -205,6 +211,8 @@ private @trusted
 			
 			if (chomp(`q{`))
 			{
+				auto save_head = head;	// workaround for ctfe
+				
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.QUO_IN_METACODE : current),
 					tail);
@@ -214,8 +222,8 @@ private @trusted
 					this = Slice(
 						current,
 						(current == Kind.METACODE
-							? head[0..$-2] ~ `(q{` ~ s.head[0..$-1] ~ `})`
-							: head[] ~ s.head),
+							? save_head[0..$-2] ~ `(q{` ~ s.head[0..$-1] ~ `})`
+							: save_head[] ~ s.head),
 						s.tail);
 				}
 	version(RunTest) if (!__ctfe) level = s.level - 1;
