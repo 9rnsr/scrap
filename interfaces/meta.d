@@ -1744,153 +1744,253 @@ private @trusted
 		return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f');
 	}
 
-	struct ParseResult
+	enum Kind
 	{
-		string result;
-		string remain;
+		METACODE=0,
+		CODESTR,
+		STR_IN_METACODE,
+		ALT_IN_METACODE,
+		RAW_IN_METACODE,
+		QUO_IN_METACODE,
+	}
+
+	struct Slice
+	{
+		version(RunTest) uint level = 0;
+		Kind current;
+		string buffer;
+		size_t eaten;
 		
-		bool opCast(T)() if (is(T==bool))
-		{
-			return result.length > 0;
-		}
-		
-		this(string res, string rem)
-		{
-			result = res;
-			remain = rem;
-		}
-		this(string rem)
-		{
-			result = null;
-			remain = rem;
-		}
-	}
-
-	ParseResult parseStr(string code)
-	{
-		auto remain = chompPrefix(code, `"`);
-		if (remain.length < code.length)
-		{
-			size_t i = code.length - remain.length;
-			auto result = code[0 .. i];
-			for (; i<code.length; ++i)
+		this(Kind c, string h, string t=null){
+			current = c;
+			if (t is null)
 			{
-				auto pVar = parseVar(code[i..$]);
-				if (pVar)
-				{
-					result ~= "`~"
-							~ pVar.result[2..$-1]
-							~ "~`";
-					i += pVar.result.length;
-				}
-				
-				if (code[i] == '\\')
-				{
-					result ~= code[i];
-					++i;
-				}
-				else if (code[i] == '\"')
-				{
-					result ~= code[i];
-					return ParseResult(result, code[i+1..$]);
-				}
-				result ~= code[i];
-			}
-		}
-		return ParseResult(code);
-	}
-
-	ParseResult parseAltStr(string code)
-	{
-		auto remain = chompPrefix(code, "`");
-		if (remain.length < code.length)
-		{
-			foreach (i; 0..remain.length)
-			{
-				if (remain[i] == '`')
-				{
-					return ParseResult(code[0..1+i+1], remain[i+1..$]);
-				}
-			}
-		}
-		return ParseResult(code);
-	}
-
-	ParseResult parseRawStr(string code)
-	{
-		auto remain = chompPrefix(code, `r"`);
-		if (remain.length < code.length)
-		{
-			foreach (i; 0..remain.length)
-			{
-				if (remain[i] == '\"')
-				{
-					return ParseResult(code[0..2+i+1], remain[i+1..$]);
-				}
-			}
-		}
-		return ParseResult(code);
-	}
-
-	ParseResult parseVar(string code)
-	{
-		auto remain = chompPrefix(code, `${`);
-		if (remain.length < code.length)
-		{
-			foreach (i; 0..remain.length)
-			{
-				if (remain[i] == '}')
-				{
-					return ParseResult(code[0..2+i+1], remain[i+1..$]);
-				}
-			}
-		}
-		return ParseResult(code);
-	}
-
-	string expandCode(string code)
-	{
-		auto remain = code;
-		auto result = "";
-		while (remain.length)
-		{
-			auto pStr    = parseStr(remain);
-			auto pAltStr = parseAltStr(remain);
-			auto pRawStr = parseRawStr(remain);
-			auto pVar    = parseVar(remain);
-			
-			if (pStr)
-			{
-				result ~= pStr.result;
-				remain  = pStr.remain;
-			}
-			else if (pAltStr)
-			{
-				result ~= "`~\"`\"~`"
-						~ pAltStr.result[1..$-1]
-						~ "`~\"`\"~`";
-				remain  = pAltStr.remain;
-			}
-			else if (pRawStr)
-			{
-				result ~= pRawStr.result;
-				remain  = pRawStr.remain;
-			}
-			else if (pVar)
-			{
-				result ~= "`~"
-						~ pVar.result[2..$-1]
-						~ "~`";
-				remain  = pVar.remain;
+				buffer = h;
+				eaten = 0;
 			}
 			else
 			{
-				result ~= remain[0];
-				remain  = remain[1..$];
+				buffer = h ~ t;
+				eaten = h.length;
 			}
 		}
-		return result;
+		
+		bool chomp(string s)
+		{
+			auto res = startsWith(tail, s);
+			if (res)
+			{
+				eaten += s.length;
+	version(RunTest) if (!__ctfe) writefln("chomp!%s(%s, %s), [%s] / [%s]", level, s, current, head, tail);
+			}
+			return res;
+		}
+		void chomp(size_t n)
+		{
+			if (eaten + n <= buffer.length)
+			{
+				eaten += n;
+	version(RunTest) if (!__ctfe) writefln("chomp!%s(%s, %s), [%s] / [%s]", level, n, current, head, tail);
+			}
+		}
+		
+		@property bool  exist() {return eaten < buffer.length;}
+		@property string head() {return buffer[0..eaten];}
+		@property string tail() {return buffer[eaten..$];}
+
+		bool parseEsc()
+		{
+			if (chomp(`\`))
+			{
+				if (chomp("x"))
+					chomp(1), chomp(1);
+				else
+					chomp(1);
+				return true;
+			}
+			else
+				return false;
+		}
+		bool parseStr()
+		{
+			if (chomp(`"`))
+			{
+				auto save_head = head;	// workaround for ctfe
+				
+				auto s = Slice(
+					(current == Kind.METACODE ? Kind.STR_IN_METACODE : current),
+					tail);
+	version(RunTest) if (!__ctfe) s.level = level + 1;
+				while (s.exist && !s.chomp(`"`))
+				{
+					if (s.parseVar()) continue;
+					if (s.parseEsc()) continue;
+					s.chomp(1);
+				}
+				this = Slice(
+					current,
+					(current == Kind.METACODE
+						? save_head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
+						: save_head[0..$] ~ s.head[0..$]),
+					s.tail);
+	version(RunTest) if (!__ctfe) level = s.level - 1;
+				
+				return true;
+			}
+			else
+				return false;
+		}
+		bool parseAlt()
+		{
+			if (chomp("`"))
+			{
+				auto save_head = head;	// workaround for ctfe
+				
+				auto s = Slice(
+					(current == Kind.METACODE ? Kind.ALT_IN_METACODE : current),
+					tail);
+	version(RunTest) if (!__ctfe) s.level = level + 1;
+				while (s.exist && !s.chomp("`"))
+				{
+					if (s.parseVar()) continue;
+					s.chomp(1);
+				}
+	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", s.level, s.current, s.head, s.tail);
+				this = Slice(
+					current,
+					(current == Kind.METACODE
+						? save_head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
+						: save_head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
+					s.tail);
+	version(RunTest) if (!__ctfe) level = s.level - 1;
+	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", level, current, head, tail);
+				return true;
+			}
+			else
+				return false;
+		}
+		bool parseRaw()
+		{
+			if (chomp(`r"`))
+			{
+				auto save_head = head;	// workaround for ctfe
+				
+				auto s = Slice(
+					(current == Kind.METACODE ? Kind.RAW_IN_METACODE : current),
+					tail);
+	version(RunTest) if (!__ctfe) s.level = level + 1;
+				while (s.exist && !s.chomp(`"`))
+				{
+					if (s.parseVar()) continue;
+					s.chomp(1);
+				}
+				this = Slice(
+					current,
+					(current == Kind.METACODE
+						? save_head[0..$-2] ~ `(r"` ~ s.head[0..$-1] ~ `")`
+						: save_head[0..$] ~ s.head[0..$]),
+					s.tail);
+				
+	version(RunTest) if (!__ctfe) level = s.level - 1;
+				return true;
+			}
+			else
+				return false;
+		}
+		bool parseQuo()
+		{
+			if (chomp(`q{`))
+			{
+				auto save_head = head;	// workaround for ctfe
+				
+				auto s = Slice(
+					(current == Kind.METACODE ? Kind.QUO_IN_METACODE : current),
+					tail);
+	version(RunTest) if (!__ctfe) s.level = level + 1;
+				if (s.parseCode!`}`())
+				{
+					this = Slice(
+						current,
+						(current == Kind.METACODE
+							? save_head[0..$-2] ~ `(q{` ~ s.head[0..$-1] ~ `})`
+							: save_head[] ~ s.head),
+						s.tail);
+				}
+	version(RunTest) if (!__ctfe) level = s.level - 1;
+				return true;
+			}
+			else
+				return false;
+		}
+		bool parseBlk()
+		{
+			if (chomp(`{`))
+				return parseCode!`}`();
+			else
+				return false;
+		}
+		bool parseVar()
+		{
+			if (chomp(`${`))
+			{
+				if (current == Kind.METACODE)
+					if (__ctfe)
+						assert(0, "Invalid var in raw-code.");
+					else
+						throw new Exception("Invalid var in raw-code.");
+				
+				auto s = Slice(
+					Kind.METACODE,
+					tail);
+	version(RunTest) if (!__ctfe) s.level = level + 1;
+				s.parseCode!`}`();
+	version(RunTest) if (!__ctfe) writefln("set_slice!%s(var, %s), [%s] / [%s]", s.level, s.current, s.head, s.tail);
+				
+				string open, close;
+				switch(current)
+				{
+				case Kind.CODESTR		:	open = "`" , close = "`";	break;
+				case Kind.STR_IN_METACODE:	open = `"` , close = `"`;	break;
+				case Kind.ALT_IN_METACODE:	open = "`" , close = "`";	break;
+				case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
+				case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
+				}
+				
+				this = Slice(
+					current,
+					(head[0..$-2] ~ close ~ " ~ " ~ s.head[0..$-1] ~ " ~ " ~ open),
+					s.tail);
+	version(RunTest) if (!__ctfe) level = s.level - 1;
+	version(RunTest) if (!__ctfe) writefln("set_slice!%s(var, %s), [%s] / [%s]", level, current, head, tail);
+				return true;
+			}
+			else
+				return false;
+		}
+		bool parseCode(string end=null)()
+		{
+			enum endCheck = end ? "!chomp(end)" : "true";
+			
+			while (exist && mixin(endCheck))
+			{
+				if (parseStr()) continue;
+				if (parseAlt()) continue;
+				if (parseRaw()) continue;
+				if (parseQuo()) continue;
+				if (parseBlk()) continue;
+				if (parseVar()) continue;
+				chomp(1);
+			}
+			return true;
+		}
 	}
+	string expandImpl(string code)
+	{
+		auto s = Slice(Kind.CODESTR, code);
+		s.parseCode();
+		return "`" ~ s.buffer ~ "`";
+	}
+
 }
 /**
 	Expand expression in code string
@@ -1903,75 +2003,82 @@ private @trusted
 	----
 	template DeclFunc(string name)
 	{
-		mixin(expand!q{
-			int ${name}(int a){ return a; }
-		});
+		// generates specified name function.
+		mixin(
+			mixin(expand!q{
+				int ${name}(int a){ return a; }
+			})
+		);
 	}
 	----
-	DeclFunc template generates specified name function.
  */
 template expand(string code)
 {
-	enum expand = "`" ~ expandCode(code) ~ "`";
+	enum expand = expandImpl(code);
 }
 
 
 version(unittest)
 {
-	template ExpandTest(string op, string from)
+	enum op = "+";
+	template Temp(string A)
 	{
-		enum ExpandTest = mixin(expand!from);
+		pragma(msg, A);
+		enum Temp = "expanded_Temp";
 	}
-	static assert(ExpandTest!("+", q{a ${op} b})     == q{a + b});
-	static assert(ExpandTest!("+", q{`raw string`})  == q{`raw string`});
-	static assert(ExpandTest!("+", q{"a ${op} b"})   == q{"a + b"});
-	static assert(ExpandTest!("+", q{r"${op}"})      == q{r"${op}"});
-	static assert(ExpandTest!("+", q{`${op}`})       == q{`${op}`});
-	static assert(ExpandTest!("+", q{"\a"})          == q{"\a"});
-	static assert(ExpandTest!("+", q{"\xA1"})        == q{"\xA1"});
-	static assert(ExpandTest!("+", q{"\0"})          == q{"\0"});
-	static assert(ExpandTest!("+", q{"\01"})         == q{"\01"});
-	static assert(ExpandTest!("+", q{"\012"})        == q{"\012"});
-	static assert(ExpandTest!("+", q{"\u0FFF"})      == q{"\u0FFF"});
-	static assert(ExpandTest!("+", q{"\U00000FFF"})  == q{"\U00000FFF"});
+}
+unittest
+{
 
-	static assert(ExpandTest!("+", q{"\""})          == q{"\""});
+	// var in code
+	static assert(mixin(expand!q{a ${op} b}) == q{a + b});
 
-	static assert(ExpandTest!("+", q{${op} ${op}})   == q{+ +});
-	static assert(ExpandTest!("+", q{"${op} ${op}"}) == q{"+ +"});
-	
-	static assert(ExpandTest!("+", q{Temm!q{ x ${op} y }}) == q{Temm!q{ x + y }});
-	
-	// --------
-/+		alias Sequence!("a", "b", "c") ParamNames;
-		
-		enum inner = expand!q{
-	join([staticMap!(
-		Instantiate!q{ "a" ~ to!string(a) }.With,
-		staticIota!(0, 5))], ", ")
-};
-pragma(msg, inner);
-		static assert(inner == mixin(q{
-	join([a0, a1, a2, a3, a4], ", ")
-}));
-+/
-		enum res = expand!q{
-alias Sequence!(${
-	join([staticMap!(
-		Instantiate!q{ "a" ~ to!string(a) }.With,
-		staticIota!(0, 5))], ", ")
-	}) args;
-};
-//		pragma(msg, res);
+	// alt-string in code
+	static assert(mixin(expand!q{`raw string`}) == q{`raw string`});
 
-/+		static assert(res == q{`
-alias Sequence!(`~
-	join([staticMap!(
-		Instantiate!q{ "a" ~ to!string(a) }.With,
-		staticIota!(0, 5))], ", ")
-	~`) args;
-`});+/
-	// --------
+
+	// var in string 
+	static assert(mixin(expand!q{"a ${op} b"}) == q{"a + b"});
+
+	// var in raw-string
+	static assert(mixin(expand!q{r"a ${op} b"}) == q{r"a + b"});
+
+	// var in alt-string
+	static assert(mixin(expand!q{`a ${op} b`}) == q{`a + b`});
+
+	// var in quoted-string 
+	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
+	static assert( mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
+
+
+	// escape sequence test
+	static assert(mixin(expand!q{"\a"})   == q{"\a"});
+	static assert(mixin(expand!q{"\xA1"}) == q{"\xA1"});
+	static assert(mixin(expand!q{"\""})   == q{"\""});
+
+
+	// var in var
+	static assert(!__traits(compiles, mixin(expand!q{${ a ${op} b }}) ));
+
+
+	static assert(mixin(expand!q{"\0"})          == q{"\0"});
+	static assert(mixin(expand!q{"\01"})         == q{"\01"});
+	static assert(mixin(expand!q{"\012"})        == q{"\012"});
+	static assert(mixin(expand!q{"\u0FFF"})      == q{"\u0FFF"});
+	static assert(mixin(expand!q{"\U00000FFF"})  == q{"\U00000FFF"});
+
+
+	// var in string in var
+	static assert(mixin(expand!q{${ Temp!" x ${op} y " }}) == "expanded_Temp");
+
+	// var in raw-string in var
+	static assert(mixin(expand!q{${ Temp!r" x ${op} y " }}) == "expanded_Temp");
+
+	// var in alt-string in var
+	static assert(mixin(expand!q{${ Temp!` x ${op} y ` }}) == "expanded_Temp");
+
+	// var in quoted-string in var
+	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
 }
 
 
