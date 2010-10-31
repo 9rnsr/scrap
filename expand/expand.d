@@ -2,11 +2,6 @@
 import std.stdio;
 
 /**
-	epandは与えられた文字列をCodeとして扱い、
-	${...}で囲まれた式を文字列に評価される変数/式として
-	展開を行う。
- */
-/**
 	Expand expression in code string
 	----
 	enum string op = "+";
@@ -17,19 +12,18 @@ import std.stdio;
 	----
 	template DeclFunc(string name)
 	{
-		mixin(expand!q{
-			int ${name}(int a){ return a; }
-		});
+		// generates specified name function.
+		mixin(
+			mixin(expand!q{
+				int ${name}(int a){ return a; }
+			})
+		);
 	}
 	----
-	DeclFunc template generates specified name function.
  */
 template expand(string code)
 {
 	enum expand = expandImpl(code);
-//	pragma(msg, "----");
-//	pragma(msg, "1: ", code);
-//	pragma(msg, "2: ", expand);
 }
 
 private @trusted
@@ -41,18 +35,9 @@ private @trusted
 		return "`" ~ s.buffer ~ "`";
 	}
 
-	bool isoctdigit(dchar c)
-	{
-		return '0'<=c && c<='7';
-	}
-	bool ishexdigit(dchar c)
-	{
-		return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f');
-	}
-
 	enum Kind
 	{
-		METACODE=0,
+		METACODE,
 		CODESTR,
 		STR_IN_METACODE,
 		ALT_IN_METACODE,
@@ -62,7 +47,6 @@ private @trusted
 
 	struct Slice
 	{
-		version(RunTest) uint level = 0;
 		Kind current;
 		string buffer;
 		size_t eaten;
@@ -85,19 +69,13 @@ private @trusted
 		{
 			auto res = startsWith(tail, s);
 			if (res)
-			{
 				eaten += s.length;
-	version(RunTest) if (!__ctfe) writefln("chomp!%s(%s, %s), [%s] / [%s]", level, s, current, head, tail);
-			}
 			return res;
 		}
 		void chomp(size_t n)
 		{
 			if (eaten + n <= buffer.length)
-			{
 				eaten += n;
-	version(RunTest) if (!__ctfe) writefln("chomp!%s(%s, %s), [%s] / [%s]", level, n, current, head, tail);
-			}
 		}
 		
 		@property bool  exist() {return eaten < buffer.length;}
@@ -126,7 +104,6 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.STR_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				while (s.exist && !s.chomp(`"`))
 				{
 					if (s.parseVar()) continue;
@@ -139,7 +116,6 @@ private @trusted
 						? save_head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
 						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
-	version(RunTest) if (!__ctfe) level = s.level - 1;
 				
 				return true;
 			}
@@ -155,21 +131,17 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.ALT_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				while (s.exist && !s.chomp("`"))
 				{
 					if (s.parseVar()) continue;
 					s.chomp(1);
 				}
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", s.level, s.current, s.head, s.tail);
 				this = Slice(
 					current,
 					(current == Kind.METACODE
 						? save_head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
 						: save_head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
 					s.tail);
-	version(RunTest) if (!__ctfe) level = s.level - 1;
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(alt, %s), [%s] / [%s]", level, current, head, tail);
 				return true;
 			}
 			else
@@ -184,7 +156,6 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.RAW_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				while (s.exist && !s.chomp(`"`))
 				{
 					if (s.parseVar()) continue;
@@ -197,7 +168,6 @@ private @trusted
 						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
 				
-	version(RunTest) if (!__ctfe) level = s.level - 1;
 				return true;
 			}
 			else
@@ -205,10 +175,6 @@ private @trusted
 		}
 		bool parseQuo()
 		{
-			// TODO: q{}は正しいDのシンボルを含む、という制限がある。
-			// 変数展開の境界が正しいシンボルを作らない場合はどうするか？
-			// →(バッククォートをEscapeしながら)AltStringに展開するしかない。
-			
 			if (chomp(`q{`))
 			{
 				auto save_head = head;	// workaround for ctfe
@@ -216,7 +182,6 @@ private @trusted
 				auto s = Slice(
 					(current == Kind.METACODE ? Kind.QUO_IN_METACODE : current),
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				if (s.parseCode!`}`())
 				{
 					this = Slice(
@@ -226,7 +191,6 @@ private @trusted
 							: save_head[] ~ s.head),
 						s.tail);
 				}
-	version(RunTest) if (!__ctfe) level = s.level - 1;
 				return true;
 			}
 			else
@@ -252,9 +216,7 @@ private @trusted
 				auto s = Slice(
 					Kind.METACODE,
 					tail);
-	version(RunTest) if (!__ctfe) s.level = level + 1;
 				s.parseCode!`}`();
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(var, %s), [%s] / [%s]", s.level, s.current, s.head, s.tail);
 				
 				string open, close;
 				switch(current)
@@ -270,8 +232,6 @@ private @trusted
 					current,
 					(head[0..$-2] ~ close ~ " ~ " ~ s.head[0..$-1] ~ " ~ " ~ open),
 					s.tail);
-	version(RunTest) if (!__ctfe) level = s.level - 1;
-	version(RunTest) if (!__ctfe) writefln("set_slice!%s(var, %s), [%s] / [%s]", level, current, head, tail);
 				return true;
 			}
 			else

@@ -9,7 +9,6 @@ version(unittest)
 	enum op = "+";
 	template Temp(string A)
 	{
-		pragma(msg, A);
 		enum Temp = "expanded_Temp";
 	}
 }
