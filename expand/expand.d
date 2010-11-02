@@ -4,28 +4,38 @@ import std.traits : isCallable, isSomeString;
 import std.stdio;
 
 /**
-	Expand expression in code string
-	----
-	enum string op = "+";
-	static assert(expand!q{ 1 ${op} 2 } == q{ 1 + 2 });
-	----
-	
-	Using both mixin expression, it is easy making parameterized code-blocks.
-	----
-	template DeclFunc(string name)
-	{
-		// generates specified name function.
-		mixin(
-			mixin(expand!q{
-				int ${name}(int a){ return a; }
-			})
-		);
-	}
-	----
- */
-template expand(string code)
+Expand expression in string literal, with mixin expression.
+--------------------
+enum string op = "+";
+static assert(mixin(expand!q{ 1 ${op} 2 }) == q{ 1 + 2 });
+--------------------
+
+If expreesion is single variable:$(UL
+$(LI you can omit side braces)
+$(LI automatically provides you implicitly conversion to string (requires importing std.conv.to)))
+--------------------
+int n = 2;
+string msg = "hello";
+writeln(mixin(expand!"I told you $n times: $msg!"));
+// prints "I told you 2 times: hello!"
+--------------------
+
+Other example, it is easy making parameterized code-blocks.
+--------------------
+template DefFunc(string name)
 {
-	enum expand = expandImpl(code);
+  // generates specified name function.
+  mixin(
+    mixin(expand!q{
+      int ${name}(int a){ return a; }
+    })
+  );
+}
+--------------------
+ */
+template expand(string s)
+{
+	enum expand = expandImpl(s);
 }
 
 private @trusted
@@ -278,7 +288,7 @@ private @trusted
 					checkVarNested();
 					
 					auto id = t[0 .. 1 + match(t[1..$], &isIdtTail).length];
-					this = Slice(current, head ~ encloseVar(id), t[id.length .. $]);
+					this = Slice(current, head ~ encloseVar(".std.conv.to!string(" ~ id ~ ")"), t[id.length .. $]);
 					
 					return true;
 				}

@@ -73,60 +73,16 @@ unittest
 	assert(mixin(expand!"ex: $var1234") == "ex: test");
 	string _var = "test";
 	assert(mixin(expand!"ex: $_var!") == "ex: test!");
-
-/+
-	// --------
-		//alias Sequence!("a", "b", "c") ParamNames;
-		
-		enum inner = expand!q{
-	join([staticMap!(
-		Instantiate!q{ "a" ~ to!string(a) }.With,
-		staticIota!(0, 5))], ", ")
-};
-pragma(msg, inner);
-		static assert(inner == mixin(q{
-	join([a0, a1, a2, a3, a4], ", ")
-}));
-
-		enum res = expand!q{
-alias Sequence!(${
-	join([staticMap!(
-		Instantiate!q{ "a" ~ to!string(a) }.With,
-		staticIota!(0, 5))], ", ")
-	}) args;
-};
-		pragma(msg, res);
-
-		static assert(res == q{`
-alias Sequence!(`~
-	join([staticMap!(
-		Instantiate!q{ "a" ~ to!string(a) }.With,
-		staticIota!(0, 5))], ", ")
-	~`) args;
-`});
-	// --------
-	enum Attr = "";
-	enum name = "func";
-	enum decl = mixin(expand!q{
-		${Attr}
-		ReturnType
-		${name}
-		(${Join!(Wrap!ParamStrings, ", ")})
-		{
-			alias Sequence!(${
-				Join!(Wrap!(
-					staticMap!(
-						Instantiate!` "a" ~ to!string(a) `.With,
-						staticIota!(0, staticLength!(FTI.Parameters)))), ", ")
-				}) args;
-			mixin(code);
-		}
-	});
-	pragma(msg, decl);
+}
+// sample unittest
+unittest
+{
+	enum string op = "+";
+	static assert(mixin(expand!q{ 1 ${op} 2 }) == q{ 1 + 2 });
 	
-	enum test = mixin(expand!q{ `test ${in} alt-string` });
-	static assert(test == q{ `test in alt-string` });
-+/
+	int a = 2;
+	string b = "hello";
+	writeln(mixin(expand!"I told you $a times: $b!"));
 }
 
 
