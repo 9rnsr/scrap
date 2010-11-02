@@ -77,12 +77,15 @@ unittest
 // sample unittest
 unittest
 {
+	enum int a = 10;
 	enum string op = "+";
-	static assert(mixin(expand!q{ 1 ${op} 2 }) == q{ 1 + 2 });
-	
-	int a = 2;
-	string b = "hello";
-	writeln(mixin(expand!"I told you $a times: $b!"));
+	static assert(mixin(expand!q{ ${a*2} ${op} 2 }) == q{ 20 + 2 });
+}
+unittest
+{
+	int n = 2;
+	string msg = "hello";
+	assert(mixin(expand!"I told you $n times: $msg!") == "I told you 2 times: hello!");
 }
 
 

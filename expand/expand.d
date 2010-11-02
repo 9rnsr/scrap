@@ -5,14 +5,15 @@ import std.stdio;
 
 /**
 Expand expression in string literal, with mixin expression.
+Expression in ${ ... } is implicitly converted to string (requires importing std.conv.to)
 --------------------
+enum int a = 10;
 enum string op = "+";
-static assert(mixin(expand!q{ 1 ${op} 2 }) == q{ 1 + 2 });
+static assert(mixin(expand!q{ ${a*2} ${op} 2 }) == q{ 20 + 2 });
+// a*2 is caluclated in this scope, and converted to string.
 --------------------
 
-If expreesion is single variable:$(UL
-$(LI you can omit side braces)
-$(LI automatically provides you implicitly conversion to string (requires importing std.conv.to)))
+If expreesion is single variable, you can omit side braces.
 --------------------
 int n = 2;
 string msg = "hello";
@@ -262,7 +263,7 @@ private @trusted
 			case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
 			case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
 			}
-			return close ~ " ~ " ~ exp ~ " ~ " ~ open;
+			return close ~ " ~ .std.conv.to!string(" ~ exp ~ ") ~ " ~ open;
 		}
 		bool parseVar()
 		{
@@ -288,7 +289,7 @@ private @trusted
 					checkVarNested();
 					
 					auto id = t[0 .. 1 + match(t[1..$], &isIdtTail).length];
-					this = Slice(current, head ~ encloseVar(".std.conv.to!string(" ~ id ~ ")"), t[id.length .. $]);
+					this = Slice(current, head ~ encloseVar(id), t[id.length .. $]);
 					
 					return true;
 				}
