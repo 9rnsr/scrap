@@ -65,6 +65,15 @@ unittest
 	// var in quoted-string in var
 	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
 
+
+	// non-paren identifier var
+	string var = "test";
+	assert(mixin(expand!"ex: $var") == "ex: test");
+	string var1234 = "test";
+	assert(mixin(expand!"ex: $var1234") == "ex: test");
+	string _var = "test";
+	assert(mixin(expand!"ex: $_var!") == "ex: test!");
+
 /+
 	// --------
 		//alias Sequence!("a", "b", "c") ParamNames;

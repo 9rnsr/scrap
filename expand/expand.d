@@ -1,4 +1,6 @@
 ﻿import std.algorithm : startsWith;
+import std.ctype : isalpha, isalnum;
+import std.traits : isCallable, isSomeString;
 import std.stdio;
 
 /**
@@ -45,6 +47,34 @@ private @trusted
 		QUO_IN_METACODE,
 	}
 
+	string match(Pred)(string s, Pred pred)
+	{
+		static if (isCallable!Pred)
+		{
+			size_t eaten = 0;
+			while (eaten < s.length && pred(s[eaten]))
+				++eaten;
+			if (eaten)
+				return s[0..eaten];
+			return null;
+		}
+		else static if (isSomeString!Pred)
+		{
+			if (startsWith(s, pred))
+				return s[0 .. pred.length];
+			return null;
+		}
+	}
+/+
+	// match and eat
+	string munch(Pred)(ref string s, Pred pred)
+	{
+		auto r = chomp(s, pred);
+		if (r.length)
+			s = s[r.length .. $];
+		return r;
+	}+/
+	
 	struct Slice
 	{
 		Kind current;
@@ -87,7 +117,7 @@ private @trusted
 			if (chomp(`\`))
 			{
 				if (chomp("x"))
-					chomp(1), chomp(1);
+					chomp(2);
 				else
 					chomp(1);
 				return true;
@@ -203,39 +233,58 @@ private @trusted
 			else
 				return false;
 		}
+		private void checkVarNested()
+		{
+			if (current == Kind.METACODE)
+				if (__ctfe)
+					assert(0, "Invalid var in raw-code.");
+				else
+					throw new Exception("Invalid var in raw-code.");
+		}
+		private string encloseVar(string exp)
+		{
+			string open, close;
+			switch(current)
+			{
+			case Kind.CODESTR		:	open = "`" , close = "`";	break;
+			case Kind.STR_IN_METACODE:	open = `"` , close = `"`;	break;
+			case Kind.ALT_IN_METACODE:	open = "`" , close = "`";	break;
+			case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
+			case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
+			}
+			return close ~ " ~ " ~ exp ~ " ~ " ~ open;
+		}
 		bool parseVar()
 		{
-			if (chomp(`${`))
+			if (auto r = match(tail, `$`))
 			{
-				if (current == Kind.METACODE)
-					if (__ctfe)
-						assert(0, "Invalid var in raw-code.");
-					else
-						throw new Exception("Invalid var in raw-code.");
+				auto t = tail[1..$];
 				
-				auto s = Slice(
-					Kind.METACODE,
-					tail);
-				s.parseCode!`}`();
+				static bool isIdtHead(dchar c) { return c=='_' || isalpha(c); }
+				static bool isIdtTail(dchar c) { return c=='_' || isalnum(c); }
 				
-				string open, close;
-				switch(current)
+				if (match(t, `{`))
 				{
-				case Kind.CODESTR		:	open = "`" , close = "`";	break;
-				case Kind.STR_IN_METACODE:	open = `"` , close = `"`;	break;
-				case Kind.ALT_IN_METACODE:	open = "`" , close = "`";	break;
-				case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
-				case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
+					checkVarNested();
+					
+					auto s = Slice(Kind.METACODE, t[1..$]);
+					s.parseCode!`}`();
+					this = Slice(current, head ~ encloseVar(s.head[0..$-1]), s.tail);
+					
+					return true;
 				}
-				
-				this = Slice(
-					current,
-					(head[0..$-2] ~ close ~ " ~ " ~ s.head[0..$-1] ~ " ~ " ~ open),
-					s.tail);
-				return true;
-			}
-			else
+				else if (auto r = match(t[0..1], &isIdtHead))
+				{
+					checkVarNested();
+					
+					auto id = t[0 .. 1 + match(t[1..$], &isIdtTail).length];
+					this = Slice(current, head ~ encloseVar(id), t[id.length .. $]);
+					
+					return true;
+				}
 				return false;
+			}
+			return false;
 		}
 		bool parseCode(string end=null)()
 		{
