@@ -67,25 +67,19 @@ unittest
 
 
 	// non-paren identifier var
-	string var = "test";
-	assert(mixin(expand!"ex: $var") == "ex: test");
-	string var1234 = "test";
-	assert(mixin(expand!"ex: $var1234") == "ex: test");
-	string _var = "test";
-	assert(mixin(expand!"ex: $_var!") == "ex: test!");
+	enum string var = "test";
+	static assert(mixin(expand!"ex: $var") == "ex: test");
+	enum string var1234 = "test";
+	static assert(mixin(expand!"ex: $var1234") == "ex: test");
+	enum string _var = "test";
+	static assert(mixin(expand!"ex: $_var!") == "ex: test!");
 }
 // sample unittest
 unittest
 {
 	enum int a = 10;
 	enum string op = "+";
-	static assert(mixin(expand!q{ ${a*2} ${op} 2 }) == q{ 20 + 2 });
-}
-unittest
-{
-	int n = 2;
-	string msg = "hello";
-	assert(mixin(expand!"I told you $n times: $msg!") == "I told you 2 times: hello!");
+	static assert(mixin(expand!q{ ${a*2} $op 2 }) == q{ 20 + 2 });
 }
 
 

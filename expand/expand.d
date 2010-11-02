@@ -6,19 +6,12 @@ import std.stdio;
 /**
 Expand expression in string literal, with mixin expression.
 Expression in ${ ... } is implicitly converted to string (requires importing std.conv.to)
+If expreesion is single variable, you can omit side braces.
 --------------------
 enum int a = 10;
 enum string op = "+";
-static assert(mixin(expand!q{ ${a*2} ${op} 2 }) == q{ 20 + 2 });
+static assert(mixin(expand!q{ ${a*2} $op 2 }) == q{ 20 + 2 });
 // a*2 is caluclated in this scope, and converted to string.
---------------------
-
-If expreesion is single variable, you can omit side braces.
---------------------
-int n = 2;
-string msg = "hello";
-writeln(mixin(expand!"I told you $n times: $msg!"));
-// prints "I told you 2 times: hello!"
 --------------------
 
 Other example, it is easy making parameterized code-blocks.
