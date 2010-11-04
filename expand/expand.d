@@ -32,6 +32,20 @@ template expand(string s)
 	enum expand = expandImpl(s);
 }
 
+import std.metastrings;
+template expandFormat(A...)
+{
+    static if (A.length == 0)
+        enum expandFormat = `""`;
+    else static if (is(typeof(A[0]) : const(char)[]))
+    {
+//		pragma(msg, expandImpl(A[0]));
+        enum expandFormat = expandImpl(A[0]) ~ expandFormat!(A[1..$]);
+    }
+    else
+        enum expandFormat = "`" ~ toStringNow!(A[0]) ~ "`" ~ expandFormat!(A[1..$]);
+}
+
 private @trusted
 {
 	public string expandImpl(string code)
@@ -260,9 +274,9 @@ private @trusted
 		}
 		bool parseVar()
 		{
-			if (auto r = match(tail, `$`))
+			if (auto r = match(tail, `%:`))
 			{
-				auto t = tail[1..$];
+				auto t = tail[2..$];
 				
 				static bool isIdtHead(dchar c) { return c=='_' || isalpha(c); }
 				static bool isIdtTail(dchar c) { return c=='_' || isalnum(c); }

@@ -1,8 +1,8 @@
 ﻿import std.stdio;
 import E = expand;
 
-alias E.expandImpl expandImpl;
-alias E.expand     expand;
+//alias E.expand     expand;
+alias E.expandFormat expandFormat;
 
 version(unittest)
 {
@@ -14,72 +14,77 @@ version(unittest)
 }
 unittest
 {
+	static assert(mixin(expandFormat!q{}) == "");
+	static assert(mixin(expandFormat!(1, ", ", 2)) == "1, 2");
+}
+unittest
+{
 
 	// var in code
-	static assert(mixin(expand!q{a ${op} b}) == q{a + b});
+	static assert(mixin(expandFormat!q{a %:{op} b}) == q{a + b});
 
 	// alt-string in code
-	static assert(mixin(expand!q{`raw string`}) == q{`raw string`});
+	static assert(mixin(expandFormat!q{`raw string`}) == q{`raw string`});
 
 
 	// var in string 
-	static assert(mixin(expand!q{"a ${op} b"}) == q{"a + b"});
+	static assert(mixin(expandFormat!q{"a %:{op} b"}) == q{"a + b"});
 
 	// var in raw-string
-	static assert(mixin(expand!q{r"a ${op} b"}) == q{r"a + b"});
+	static assert(mixin(expandFormat!q{r"a %:{op} b"}) == q{r"a + b"});
 
 	// var in alt-string
-	static assert(mixin(expand!q{`a ${op} b`}) == q{`a + b`});
+	static assert(mixin(expandFormat!q{`a %:{op} b`}) == q{`a + b`});
 
 	// var in quoted-string 
-	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
-	static assert( mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
+	static assert(mixin(expandFormat!q{q{a %:{op} b}}) == q{q{a + b}});
+	static assert(mixin(expandFormat!q{Temp!q{ x %:{op} y }}) == q{Temp!q{ x + y }});
 
 
 	// escape sequence test
-	static assert(mixin(expand!q{"\a"})   == q{"\a"});
-	static assert(mixin(expand!q{"\xA1"}) == q{"\xA1"});
-	static assert(mixin(expand!q{"\""})   == q{"\""});
+	static assert(mixin(expandFormat!q{"\a"})   == q{"\a"});
+	static assert(mixin(expandFormat!q{"\xA1"}) == q{"\xA1"});
+	static assert(mixin(expandFormat!q{"\""})   == q{"\""});
 
 
 	// var in var
-	static assert(!__traits(compiles, mixin(expand!q{${ a ${op} b }}) ));
+	static assert(!__traits(compiles, mixin(expandFormat!q{%:{ a %:{op} b }}) ));
 
 
-	static assert(mixin(expand!q{"\0"})          == q{"\0"});
-	static assert(mixin(expand!q{"\01"})         == q{"\01"});
-	static assert(mixin(expand!q{"\012"})        == q{"\012"});
-	static assert(mixin(expand!q{"\u0FFF"})      == q{"\u0FFF"});
-	static assert(mixin(expand!q{"\U00000FFF"})  == q{"\U00000FFF"});
+	static assert(mixin(expandFormat!q{"\0"})          == q{"\0"});
+	static assert(mixin(expandFormat!q{"\01"})         == q{"\01"});
+	static assert(mixin(expandFormat!q{"\012"})        == q{"\012"});
+	static assert(mixin(expandFormat!q{"\u0FFF"})      == q{"\u0FFF"});
+	static assert(mixin(expandFormat!q{"\U00000FFF"})  == q{"\U00000FFF"});
 
 
 	// var in string in var
-	static assert(mixin(expand!q{${ Temp!" x ${op} y " }}) == "expanded_Temp");
+	static assert(mixin(expandFormat!q{%:{ Temp!" x %:{op} y " }}) == "expanded_Temp");
 
 	// var in raw-string in var
-	static assert(mixin(expand!q{${ Temp!r" x ${op} y " }}) == "expanded_Temp");
+	static assert(mixin(expandFormat!q{%:{ Temp!r" x %:{op} y " }}) == "expanded_Temp");
 
 	// var in alt-string in var
-	static assert(mixin(expand!q{${ Temp!` x ${op} y ` }}) == "expanded_Temp");
+	static assert(mixin(expandFormat!q{%:{ Temp!` x %:{op} y ` }}) == "expanded_Temp");
 
 	// var in quoted-string in var
-	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
+	static assert(mixin(expandFormat!q{%:{ Temp!q{ x %:{op} y } }}) == "expanded_Temp");
 
 
 	// non-paren identifier var
 	enum string var = "test";
-	static assert(mixin(expand!"ex: $var") == "ex: test");
+	static assert(mixin(expandFormat!"ex: %:var") == "ex: test");
 	enum string var1234 = "test";
-	static assert(mixin(expand!"ex: $var1234") == "ex: test");
+	static assert(mixin(expandFormat!"ex: %:var1234") == "ex: test");
 	enum string _var = "test";
-	static assert(mixin(expand!"ex: $_var!") == "ex: test!");
+	static assert(mixin(expandFormat!"ex: %:_var!") == "ex: test!");
 }
 // sample unittest
 unittest
 {
 	enum int a = 10;
 	enum string op = "+";
-	static assert(mixin(expand!q{ ${a*2} $op 2 }) == q{ 20 + 2 });
+	static assert(mixin(expandFormat!q{ %:{a*2} %:op 2 }) == q{ 20 + 2 });
 }
 
 
