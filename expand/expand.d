@@ -2,6 +2,8 @@
 import std.ctype : isalpha, isalnum;
 import std.traits : isCallable, isSomeString;
 import std.stdio;
+import std.typetuple : TypeTuple;
+import std.conv : text;
 
 /**
 Expand expression in string literal, with mixin expression.
@@ -29,18 +31,18 @@ template DefFunc(string name)
  */
 template expand(string s)
 {
-	enum expand = expandImpl(s);
+	enum expand = "text(TypeTuple!(" ~ splitVars(s) ~ "))";
+}
+
+string splitVars(string code)
+{
+	auto s = Slice(Kind.CODESTR, code);
+	s.parseCode();
+	return "`" ~ s.buffer ~ "`";
 }
 
 private @trusted
 {
-	public string expandImpl(string code)
-	{
-		auto s = Slice(Kind.CODESTR, code);
-		s.parseCode();
-		return "`" ~ s.buffer ~ "`";
-	}
-
 	enum Kind
 	{
 		METACODE,
@@ -147,7 +149,7 @@ private @trusted
 				this = Slice(
 					current,
 					(current == Kind.METACODE
-						? save_head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
+						? save_head[0..$-1] ~ `(text("` ~ s.head[0..$-1] ~ `"))`
 						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
 				
@@ -173,7 +175,7 @@ private @trusted
 				this = Slice(
 					current,
 					(current == Kind.METACODE
-						? save_head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
+						? save_head[0..$-1] ~ "(text(`" ~ s.head[0..$-1] ~ "`))"
 						: save_head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
 					s.tail);
 				return true;
@@ -198,7 +200,7 @@ private @trusted
 				this = Slice(
 					current,
 					(current == Kind.METACODE
-						? save_head[0..$-2] ~ `(r"` ~ s.head[0..$-1] ~ `")`
+						? save_head[0..$-2] ~ `(text(r"` ~ s.head[0..$-1] ~ `"))`
 						: save_head[0..$] ~ s.head[0..$]),
 					s.tail);
 				
@@ -221,7 +223,7 @@ private @trusted
 					this = Slice(
 						current,
 						(current == Kind.METACODE
-							? save_head[0..$-2] ~ `(q{` ~ s.head[0..$-1] ~ `})`
+							? save_head[0..$-2] ~ `(text(q{` ~ s.head[0..$-1] ~ `}))`
 							: save_head[] ~ s.head),
 						s.tail);
 				}
@@ -256,7 +258,7 @@ private @trusted
 			case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
 			case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
 			}
-			return close ~ " ~ .std.conv.to!string(" ~ exp ~ ") ~ " ~ open;
+			return close ~ ", " ~ exp ~ ", " ~ open;
 		}
 		bool parseVar()
 		{

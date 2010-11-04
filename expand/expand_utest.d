@@ -1,7 +1,8 @@
 ﻿import std.stdio;
 import E = expand;
 
-alias E.expandImpl expandImpl;
+alias E.TypeTuple  TypeTuple;
+alias E.text       text;
 alias E.expand     expand;
 
 version(unittest)
@@ -33,7 +34,7 @@ unittest
 
 	// var in quoted-string 
 	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
-	static assert( mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
+	static assert(mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
 
 
 	// escape sequence test
