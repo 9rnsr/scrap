@@ -1,8 +1,11 @@
 ﻿import std.stdio;
 import E = expand;
-
-alias E.expandImpl		expandImpl;
+ 
+alias E.TypeTuple		TypeTuple;
+alias E.text			text;
 alias E.expand			expand;
+alias E.expandSplit		expandSplit;
+alias E.splitVars		splitVars;
 alias E.toStringNow		toStringNow;
 
 version(unittest)
@@ -41,7 +44,7 @@ unittest
 
 	// var in quoted-string 
 	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
-	static assert( mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
+	static assert(mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
 
 
 	// escape sequence test
@@ -82,7 +85,6 @@ unittest
 	enum string _var = "test";
 	static assert(mixin(expand!"ex: $_var!") == "ex: test!");
 	
-	
 	// type stringnize
 	alias double Double;
 	struct S{}
@@ -100,6 +102,8 @@ unittest
 	enum int a = 10;
 	enum string op = "+";
 	static assert(mixin(expand!q{ ${a*2} $op 2 }) == q{ 20 + 2 });
+	
+	writeln(mixin(expandSplit!"I call you $a times."));
 }
 
 
