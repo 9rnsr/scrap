@@ -32,6 +32,31 @@ template expand(string s)
 	enum expand = expandImpl(s);
 }
 
+template toStringNow(alias V)
+{
+	static if (isCompileTimeValue!(V))
+	{
+		static if (__traits(compiles, { auto v = V; }))
+		{
+//			pragma(msg, "toStringNow, Alias : ", V);
+			alias V toStringNow;
+		}
+		else
+		{
+//			pragma(msg, "toStringNow, Template : ", V);
+			enum toStringNow = V.stringof;
+		}
+	}
+	else
+	{
+		alias V toStringNow;	// run-time value
+	}
+}
+template toStringNow(T)
+{
+	enum toStringNow = T.stringof;
+}
+
 private @trusted
 {
 	public string expandImpl(string code)
@@ -39,6 +64,37 @@ private @trusted
 		auto s = Slice(Kind.CODESTR, code);
 		s.parseCode();
 		return "`" ~ s.buffer ~ "`";
+	}
+
+	template Identity(alias V)
+	{
+		alias V Identity;
+	}
+
+	template isCompileTimeValue(alias V)
+	{
+		static if (is(typeof(V)))
+		{
+//			pragma(msg, "isCompileTimeValue : alias is(typeof(V))");
+			enum isCompileTimeValue = true;
+		}
+		else static if (is(V))
+		{
+//			pragma(msg, "isCompileTimeValue : type'");
+			enum isCompileTimeValue = true;
+		}
+		else
+		{
+			enum isCompileTimeValue = __traits(compiles, {
+				alias Identity!(runtime_eval(V)) A;
+			});
+//			pragma(msg, "isCompileTimeValue : compiles : ", isCompileTimeValue);
+		}
+	}
+	template isCompileTimeValue(V)
+	{
+//		pragma(msg, "isCompileTimeValue : type");
+		enum isCompileTimeValue = true;
 	}
 
 	enum Kind
@@ -256,7 +312,7 @@ private @trusted
 			case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
 			case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
 			}
-			return close ~ " ~ .std.conv.to!string(" ~ exp ~ ") ~ " ~ open;
+			return close ~ " ~ .std.conv.to!string(toStringNow!("~exp~")) ~ " ~ open;
 		}
 		bool parseVar()
 		{

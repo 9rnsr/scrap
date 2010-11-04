@@ -1,8 +1,9 @@
 ﻿import std.stdio;
 import E = expand;
 
-alias E.expandImpl expandImpl;
-alias E.expand     expand;
+alias E.expandImpl		expandImpl;
+alias E.expand			expand;
+alias E.toStringNow		toStringNow;
 
 version(unittest)
 {
@@ -10,6 +11,13 @@ version(unittest)
 	template Temp(string A)
 	{
 		enum Temp = "expanded_Temp";
+	}
+	template Test(int n)
+	{
+	}
+	template TestType(alias A)
+	{
+		alias typeof(A) TestType;
 	}
 }
 unittest
@@ -73,6 +81,18 @@ unittest
 	static assert(mixin(expand!"ex: $var1234") == "ex: test");
 	enum string _var = "test";
 	static assert(mixin(expand!"ex: $_var!") == "ex: test!");
+	
+	
+	// type stringnize
+	alias double Double;
+	struct S{}
+	class C{}
+	static assert(mixin(expand!q{enum t = "$int";}) == q{enum t = "int";});
+	static assert(mixin(expand!q{enum t = "$Double";}) == q{enum t = "double";});
+	static assert(mixin(expand!q{enum t = "new $S()";}) == q{enum t = "new S()";});
+	static assert(mixin(expand!q{enum t = "new $C()";}) == q{enum t = "new C()";});
+	static assert(mixin(expand!q{enum t = "${TestType!`str`}";}) == q{enum t = "string";});
+	static assert(mixin(expand!q{enum t = "${Test!(10)}";}) == q{enum t = "Test!(10)";});	// template name
 }
 // sample unittest
 unittest
