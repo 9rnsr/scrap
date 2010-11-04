@@ -31,7 +31,12 @@ template DefFunc(string name)
  */
 template expand(string s)
 {
-	enum expand = "text(TypeTuple!(" ~ splitVars(s) ~ "))";
+	enum expand = "text(" ~ expandSplit!s ~ ")";
+}
+
+template expandSplit(string s)
+{
+	enum expandSplit = "TypeTuple!(" ~ splitVars(s) ~ ")";
 }
 
 string splitVars(string code)

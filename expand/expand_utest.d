@@ -1,9 +1,12 @@
 ﻿import std.stdio;
 import E = expand;
+ 
+alias E.TypeTuple		TypeTuple;
+alias E.text			text;
+alias E.expand			expand;
+alias E.expandSplit		expandSplit;
+alias E.splitVars		splitVars;
 
-alias E.TypeTuple  TypeTuple;
-alias E.text       text;
-alias E.expand     expand;
 
 version(unittest)
 {
@@ -74,6 +77,8 @@ unittest
 	static assert(mixin(expand!"ex: $var1234") == "ex: test");
 	enum string _var = "test";
 	static assert(mixin(expand!"ex: $_var!") == "ex: test!");
+	
+	writeln(mixin(expandSplit!"I call you $a times."));
 }
 // sample unittest
 unittest
