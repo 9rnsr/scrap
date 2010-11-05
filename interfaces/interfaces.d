@@ -13,6 +13,7 @@ alias meta.staticMap staticMap;
 alias meta.isSame isSame;
 alias meta.allSatisfy allSatisfy;
 
+import metastrings_expand;
 
 /*private*/ interface Structural
 {
@@ -90,12 +91,12 @@ private template AdaptTo(Targets...)
 		this(S s){ super(s); }
 	
 	public:
-		template generateFun(string n)
+		template generateFun(size_t n)
 		{
 			enum generateFun = mixin(expand!q{
 				mixin DeclareFunction!(
-					CoTypes[${n}],	// covariant
-					NameOf!(TgtFuns[${n}]),
+					CoTypes[$n],	// covariant
+					NameOf!(TgtFuns[$n]),
 					"return source." ~ NameOf!(TgtFuns[${n}]) ~ "(args);"
 				);
 			});
@@ -103,8 +104,7 @@ private template AdaptTo(Targets...)
 		mixin mixinAll!(
 			staticMap!(
 				generateFun,
-				staticMap!(StringOf, staticIota!(0,
-					staticLength!TgtFuns))));	//workaround @@@BUG4333@@@
+				staticIota!(0, staticLength!TgtFuns)));	//workaround @@@BUG4333@@@
 	}
 }
 
