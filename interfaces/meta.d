@@ -1609,78 +1609,75 @@ version(unittest)
 // Sequences
 //----------------------------------------------------------------------------//
 
-version = Fixed_Issue4217;
+//version = Fixed_Issue4217;
 
 version(Fixed_Issue4217)
 {
+	// issue4217が修正され、シンボルのシーケンスの要素を正しく比較できる
+	
 	template VirtualFunctionsOfImpl(T, string name)
 	{
 		alias Sequence!(__traits(getVirtualFunctions, T, name)) Result;
 	}
+	/**
+		does not reduce overloads
+		Parameter:
+			name :	specified member name.
+					if it is empty string, all of virtual-functions on T returns.
+	 */
+	template VirtualFunctionsOf(T, string name="")
+	{
+		static if (name == "")
+		{
+			alias staticMap!(
+				Instantiate!(
+					Instantiate!VirtualFunctionsOfImpl.bindFront!T
+				).Returns!"Result",
+				Sequence!(__traits(allMembers, T))
+			) VirtualFunctionsOf;
+		}
+		else
+		{
+			alias VirtualFunctionsOfImpl!(T, name).Result VirtualFunctionsOf;
+		}
+	}
 }
 else
 {
-	// issue4217が修正されないと、シンボルのシーケンスの要素は正しく比較できない
-	// 下のworkaroundは間違い
-
-//	private template VirtualFunctionsOfImpl(T, string name)
-//	{
-//		alias Sequence!(__traits(getVirtualFunctions, T, name)) Overloads;
-//		//pragma(msg, ">> ", typeof(Overloads));
-//		
-//		template MakeSeq(int n)
-//		{
-//			static if (n >= Overloads.length)
-//			{
-//				alias Sequence!() Result;
-//			}
-//			else
-//			{
-//				//pragma(msg, ". ", typeof(Overloads[n]));
-//				alias Overloads[n] Symbol;
-//				
-//				alias Sequence!(
-//					Symbol,//Overloads[n],
-//					MakeSeq!(n+1).Result
-//				) Result;
-//			}
-//		}
-//		alias MakeSeq!(0).Result Result;
-//	}
-//	version(unittest)
-//	{
-//		interface I
-//		{
-//			int f() const;
-//			int f() immutable;
-//		}
-//		alias VirtualFunctionsOfImpl!(I, "f").Result F;
-//		//pragma(msg, TypeOf!(F[0]), ", ", typeof(F[0]));
-//		static assert(is(TypeOf!(F[0]) == typeof(F[0])));
-//		//pragma(msg, TypeOf!(F[1]), ", ", typeof(F[1]));
-//		static assert(is(TypeOf!(F[1]) == typeof(F[1])));
-//	}
-}
-/**
-	does not reduce overloads
-	Parameter:
-		name :	specified member name.
-				if it is empty string, all of virtual-functions on T returns.
- */
-template VirtualFunctionsOf(T, string name="")
-{
-	static if (name == "")
+	// 関数シンボルをFunctionSignature templateで代替する
+	
+	struct FunctionSignature(string N, T)
+	{
+		enum Name = N;
+		alias T Type;
+	}
+	unittest
+	{
+		void draw(){}
+		alias FunctionSignature!(__traits(identifier, draw), typeof(draw)) S;
+		static assert(S.Name == "draw");
+		static assert(is(S.Type* == void function()));
+	}
+	private template OverloadSigsImpl(T...)
+	{
+		static if (T.length == 0)
+			alias Sequence!() OverloadSigsImpl;
+		else
+			alias Sequence!(FunctionSignature!(__traits(identifier, T[0]), typeof(T[0])),
+				OverloadSigsImpl!(T[1..$])) OverloadSigsImpl;
+	}
+	private template OverloadSigs(T)
+	{
+		template OverloadSigs(string name)
+		{
+			alias OverloadSigsImpl!(__traits(getVirtualFunctions, T, name)) OverloadSigs;
+		}
+	}
+	template VirtualFunctionsOf(T)
 	{
 		alias staticMap!(
-			Instantiate!(
-				Instantiate!VirtualFunctionsOfImpl.bindFront!T
-			).Returns!"Result",
-			Sequence!(__traits(allMembers, T))
-		) VirtualFunctionsOf;
-	}
-	else
-	{
-		alias VirtualFunctionsOfImpl!(T, name).Result VirtualFunctionsOf;
+			OverloadSigs!T,
+			__traits(allMembers, T)) VirtualFunctionsOf;
 	}
 }
 

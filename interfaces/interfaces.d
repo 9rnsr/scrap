@@ -20,11 +20,22 @@ import metastrings_expand;
 	Object _getSource();
 }
 
+//version = Fixed_Issue4217;
+
 private template AdaptTo(Targets...)
 	if( allSatisfy!(isInterface, Targets) )
 {
 	alias staticUniq!(staticMap!(VirtualFunctionsOf, Targets)) TgtFuns;
 
+  version(Fixed_Issue4217)
+  {
+	alias meta.NameOf NameOf;
+	alias meta.TypeOf TypeOf;
+  }else{
+	template NameOf(alias A){ alias A.Name NameOf; }
+	template TypeOf(alias A){ alias A.Type TypeOf; }
+  }
+	
 	template CovariantSignatures(S)
 	{
 		alias VirtualFunctionsOf!S SrcFuns;
