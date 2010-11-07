@@ -47,23 +47,15 @@ string splitVars(string code)
 
 template toStringNow(alias V)
 {
-	static if (isCompileTimeValue!(V))
-	{
+	static if (is(typeof(V)))
 		static if (__traits(compiles, { auto v = V; }))
-		{
-//			pragma(msg, "toStringNow, Alias : ", V);
 			alias V toStringNow;
-		}
 		else
-		{
-//			pragma(msg, "toStringNow, Template : ", V);
-			enum toStringNow = V.stringof;
-		}
-	}
+			enum toStringNow = V.stringof;	// V is template
+	else static if (is(V))
+		enum toStringNow = V.stringof;
 	else
-	{
-		alias V toStringNow;	// run-time value
-	}
+		static assert(0, "undefined error with " ~ V.stringof);
 }
 template toStringNow(T)
 {
@@ -72,38 +64,6 @@ template toStringNow(T)
 
 private @trusted
 {
-
-	template Identity(alias V)
-	{
-		alias V Identity;
-	}
-
-	template isCompileTimeValue(alias V)
-	{
-		static if (is(typeof(V)))
-		{
-//			pragma(msg, "isCompileTimeValue : alias is(typeof(V))");
-			enum isCompileTimeValue = true;
-		}
-		else static if (is(V))
-		{
-//			pragma(msg, "isCompileTimeValue : type'");
-			enum isCompileTimeValue = true;
-		}
-		else
-		{
-			enum isCompileTimeValue = __traits(compiles, {
-				alias Identity!(runtime_eval(V)) A;
-			});
-//			pragma(msg, "isCompileTimeValue : compiles : ", isCompileTimeValue);
-		}
-	}
-	template isCompileTimeValue(V)
-	{
-//		pragma(msg, "isCompileTimeValue : type");
-		enum isCompileTimeValue = true;
-	}
-
 	enum Kind
 	{
 		METACODE,
