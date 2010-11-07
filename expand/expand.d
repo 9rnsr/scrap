@@ -333,4 +333,102 @@ private @trusted
 	}
 }
 
-import expand_utest;
+version(unittest)
+{
+	enum op = "+";
+	template ExpandTemp(string A)
+	{
+		enum ExpandTemp = "expanded_Temp";
+	}
+	template ExpandTest(int n)
+	{
+	}
+	template ExpandType(alias A)
+	{
+		alias typeof(A) ExpandType;
+	}
+}
+unittest
+{
+
+	// var in code
+	static assert(mixin(expand!q{a ${op} b}) == q{a + b});
+
+	// alt-string in code
+	static assert(mixin(expand!q{`raw string`}) == q{`raw string`});
+
+
+	// var in string 
+	static assert(mixin(expand!q{"a ${op} b"}) == q{"a + b"});
+
+	// var in raw-string
+	static assert(mixin(expand!q{r"a ${op} b"}) == q{r"a + b"});
+
+	// var in alt-string
+	static assert(mixin(expand!q{`a ${op} b`}) == q{`a + b`});
+
+	// var in quoted-string 
+	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
+	static assert(mixin(expand!q{ExpandTemp!q{ x ${op} y }}) == q{ExpandTemp!q{ x + y }});
+
+
+	// escape sequence test
+	static assert(mixin(expand!q{"\a"})   == q{"\a"});
+	static assert(mixin(expand!q{"\xA1"}) == q{"\xA1"});
+	static assert(mixin(expand!q{"\""})   == q{"\""});
+
+
+	// var in var
+	static assert(!__traits(compiles, mixin(expand!q{${ a ${op} b }}) ));
+
+
+	static assert(mixin(expand!q{"\0"})          == q{"\0"});
+	static assert(mixin(expand!q{"\01"})         == q{"\01"});
+	static assert(mixin(expand!q{"\012"})        == q{"\012"});
+	static assert(mixin(expand!q{"\u0FFF"})      == q{"\u0FFF"});
+	static assert(mixin(expand!q{"\U00000FFF"})  == q{"\U00000FFF"});
+
+
+	// var in string in var
+	static assert(mixin(expand!q{${ ExpandTemp!" x ${op} y " }}) == "expanded_Temp");
+
+	// var in raw-string in var
+	static assert(mixin(expand!q{${ ExpandTemp!r" x ${op} y " }}) == "expanded_Temp");
+
+	// var in alt-string in var
+	static assert(mixin(expand!q{${ ExpandTemp!` x ${op} y ` }}) == "expanded_Temp");
+
+	// var in quoted-string in var
+	static assert(mixin(expand!q{${ ExpandTemp!q{ x ${op} y } }}) == "expanded_Temp");
+
+
+	// non-paren identifier var
+	enum string var = "test";
+	static assert(mixin(expand!"ex: $var") == "ex: test");
+	enum string var1234 = "test";
+	static assert(mixin(expand!"ex: $var1234") == "ex: test");
+	enum string _var = "test";
+	static assert(mixin(expand!"ex: $_var!") == "ex: test!");
+	
+	// type stringnize
+	alias double Double;
+	struct S{}
+	class C{}
+	static assert(mixin(expand!q{enum t = "$int";}) == q{enum t = "int";});
+	static assert(mixin(expand!q{enum t = "$Double";}) == q{enum t = "double";});
+	static assert(mixin(expand!q{enum t = "new $S()";}) == q{enum t = "new S()";});
+	static assert(mixin(expand!q{enum t = "new $C()";}) == q{enum t = "new C()";});
+	static assert(mixin(expand!q{enum t = "${ExpandType!`str`}";}) == q{enum t = "string";});
+	static assert(mixin(expand!q{enum t = "${ExpandTest!(10)}";}) == q{enum t = "ExpandTest!(10)";});	// template name
+}
+// sample unittest
+unittest
+{
+	enum int a = 10;
+	enum string op = "+";
+	static assert(mixin(expand!q{ ${a*2} $op 2 }) == q{ 20 + 2 });
+	
+	assert(text(mixin(expandSplit!"I call you $a times.")) == "I call you 10 times.");
+}
+
+version(RunTest) void main(){}

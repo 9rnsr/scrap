@@ -11,16 +11,16 @@ alias E.toStringNow		toStringNow;
 version(unittest)
 {
 	enum op = "+";
-	template Temp(string A)
+	template ExpandTemp(string A)
 	{
-		enum Temp = "expanded_Temp";
+		enum ExpandTemp = "expanded_Temp";
 	}
-	template Test(int n)
+	template ExpandTest(int n)
 	{
 	}
-	template TestType(alias A)
+	template ExpandType(alias A)
 	{
-		alias typeof(A) TestType;
+		alias typeof(A) ExpandType;
 	}
 }
 unittest
@@ -44,7 +44,7 @@ unittest
 
 	// var in quoted-string 
 	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
-	static assert(mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
+	static assert(mixin(expand!q{ExpandTemp!q{ x ${op} y }}) == q{ExpandTemp!q{ x + y }});
 
 
 	// escape sequence test
@@ -65,16 +65,16 @@ unittest
 
 
 	// var in string in var
-	static assert(mixin(expand!q{${ Temp!" x ${op} y " }}) == "expanded_Temp");
+	static assert(mixin(expand!q{${ ExpandTemp!" x ${op} y " }}) == "expanded_Temp");
 
 	// var in raw-string in var
-	static assert(mixin(expand!q{${ Temp!r" x ${op} y " }}) == "expanded_Temp");
+	static assert(mixin(expand!q{${ ExpandTemp!r" x ${op} y " }}) == "expanded_Temp");
 
 	// var in alt-string in var
-	static assert(mixin(expand!q{${ Temp!` x ${op} y ` }}) == "expanded_Temp");
+	static assert(mixin(expand!q{${ ExpandTemp!` x ${op} y ` }}) == "expanded_Temp");
 
 	// var in quoted-string in var
-	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
+	static assert(mixin(expand!q{${ ExpandTemp!q{ x ${op} y } }}) == "expanded_Temp");
 
 
 	// non-paren identifier var
@@ -93,8 +93,8 @@ unittest
 	static assert(mixin(expand!q{enum t = "$Double";}) == q{enum t = "double";});
 	static assert(mixin(expand!q{enum t = "new $S()";}) == q{enum t = "new S()";});
 	static assert(mixin(expand!q{enum t = "new $C()";}) == q{enum t = "new C()";});
-	static assert(mixin(expand!q{enum t = "${TestType!`str`}";}) == q{enum t = "string";});
-	static assert(mixin(expand!q{enum t = "${Test!(10)}";}) == q{enum t = "Test!(10)";});	// template name
+	static assert(mixin(expand!q{enum t = "${ExpandType!`str`}";}) == q{enum t = "string";});
+	static assert(mixin(expand!q{enum t = "${ExpandTest!(10)}";}) == q{enum t = "ExpandTest!(10)";});	// template name
 }
 // sample unittest
 unittest
