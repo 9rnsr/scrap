@@ -1609,78 +1609,75 @@ version(unittest)
 // Sequences
 //----------------------------------------------------------------------------//
 
-version = Fixed_Issue4217;
+//version = Fixed_Issue4217;
 
 version(Fixed_Issue4217)
 {
+	// issue4217が修正され、シンボルのシーケンスの要素を正しく比較できる
+	
 	template VirtualFunctionsOfImpl(T, string name)
 	{
 		alias Sequence!(__traits(getVirtualFunctions, T, name)) Result;
 	}
+	/**
+		does not reduce overloads
+		Parameter:
+			name :	specified member name.
+					if it is empty string, all of virtual-functions on T returns.
+	 */
+	template VirtualFunctionsOf(T, string name="")
+	{
+		static if (name == "")
+		{
+			alias staticMap!(
+				Instantiate!(
+					Instantiate!VirtualFunctionsOfImpl.bindFront!T
+				).Returns!"Result",
+				Sequence!(__traits(allMembers, T))
+			) VirtualFunctionsOf;
+		}
+		else
+		{
+			alias VirtualFunctionsOfImpl!(T, name).Result VirtualFunctionsOf;
+		}
+	}
 }
 else
 {
-	// issue4217が修正されないと、シンボルのシーケンスの要素は正しく比較できない
-	// 下のworkaroundは間違い
-
-//	private template VirtualFunctionsOfImpl(T, string name)
-//	{
-//		alias Sequence!(__traits(getVirtualFunctions, T, name)) Overloads;
-//		//pragma(msg, ">> ", typeof(Overloads));
-//		
-//		template MakeSeq(int n)
-//		{
-//			static if (n >= Overloads.length)
-//			{
-//				alias Sequence!() Result;
-//			}
-//			else
-//			{
-//				//pragma(msg, ". ", typeof(Overloads[n]));
-//				alias Overloads[n] Symbol;
-//				
-//				alias Sequence!(
-//					Symbol,//Overloads[n],
-//					MakeSeq!(n+1).Result
-//				) Result;
-//			}
-//		}
-//		alias MakeSeq!(0).Result Result;
-//	}
-//	version(unittest)
-//	{
-//		interface I
-//		{
-//			int f() const;
-//			int f() immutable;
-//		}
-//		alias VirtualFunctionsOfImpl!(I, "f").Result F;
-//		//pragma(msg, TypeOf!(F[0]), ", ", typeof(F[0]));
-//		static assert(is(TypeOf!(F[0]) == typeof(F[0])));
-//		//pragma(msg, TypeOf!(F[1]), ", ", typeof(F[1]));
-//		static assert(is(TypeOf!(F[1]) == typeof(F[1])));
-//	}
-}
-/**
-	does not reduce overloads
-	Parameter:
-		name :	specified member name.
-				if it is empty string, all of virtual-functions on T returns.
- */
-template VirtualFunctionsOf(T, string name="")
-{
-	static if (name == "")
+	// 関数シンボルをFunctionSignature templateで代替する
+	
+	struct FunctionSignature(string N, T)
+	{
+		enum Name = N;
+		alias T Type;
+	}
+	unittest
+	{
+		void draw(){}
+		alias FunctionSignature!(__traits(identifier, draw), typeof(draw)) S;
+		static assert(S.Name == "draw");
+		static assert(is(S.Type* == void function()));
+	}
+	private template OverloadSigsImpl(T...)
+	{
+		static if (T.length == 0)
+			alias Sequence!() OverloadSigsImpl;
+		else
+			alias Sequence!(FunctionSignature!(__traits(identifier, T[0]), typeof(T[0])),
+				OverloadSigsImpl!(T[1..$])) OverloadSigsImpl;
+	}
+	private template OverloadSigs(T)
+	{
+		template OverloadSigs(string name)
+		{
+			alias OverloadSigsImpl!(__traits(getVirtualFunctions, T, name)) OverloadSigs;
+		}
+	}
+	template VirtualFunctionsOf(T)
 	{
 		alias staticMap!(
-			Instantiate!(
-				Instantiate!VirtualFunctionsOfImpl.bindFront!T
-			).Returns!"Result",
-			Sequence!(__traits(allMembers, T))
-		) VirtualFunctionsOf;
-	}
-	else
-	{
-		alias VirtualFunctionsOfImpl!(T, name).Result VirtualFunctionsOf;
+			OverloadSigs!T,
+			__traits(allMembers, T)) VirtualFunctionsOf;
 	}
 }
 
@@ -1733,336 +1730,7 @@ template mixinAll(mixins...)
 }
 
 
-private @trusted
-{
-//	bool isoctdigit(dchar c) pure nothrow @safe
-//	{
-//		return '0'<=c && c<='7';
-//	}
-//	bool ishexdigit(dchar c) pure nothrow @safe
-//	{
-//		return ('0'<=c && c<='9') || ('A'<=c && c<='F') || ('a'<=c && c<='f');
-//	}
-
-	enum Kind
-	{
-		METACODE,
-		CODESTR,
-		STR_IN_METACODE,
-		ALT_IN_METACODE,
-		RAW_IN_METACODE,
-		QUO_IN_METACODE,
-	}
-
-	struct Slice
-	{
-		Kind current;
-		string buffer;
-		size_t eaten;
-		
-		this(Kind c, string h, string t=null){
-			current = c;
-			if (t is null)
-			{
-				buffer = h;
-				eaten = 0;
-			}
-			else
-			{
-				buffer = h ~ t;
-				eaten = h.length;
-			}
-		}
-		
-		bool chomp(string s)
-		{
-			auto res = startsWith(tail, s);
-			if (res)
-			{
-				eaten += s.length;
-			}
-			return res;
-		}
-		void chomp(size_t n)
-		{
-			if (eaten + n <= buffer.length)
-			{
-				eaten += n;
-			}
-		}
-		
-		@property bool  exist() {return eaten < buffer.length;}
-		@property string head() {return buffer[0..eaten];}
-		@property string tail() {return buffer[eaten..$];}
-
-		bool parseEsc()
-		{
-			if (chomp(`\`))
-			{
-				if (chomp("x"))
-					chomp(1), chomp(1);
-				else
-					chomp(1);
-				return true;
-			}
-			else
-				return false;
-		}
-		bool parseStr()
-		{
-			if (chomp(`"`))
-			{
-				auto save_head = head;	// workaround for ctfe
-				
-				auto s = Slice(
-					(current == Kind.METACODE ? Kind.STR_IN_METACODE : current),
-					tail);
-				while (s.exist && !s.chomp(`"`))
-				{
-					if (s.parseVar()) continue;
-					if (s.parseEsc()) continue;
-					s.chomp(1);
-				}
-				this = Slice(
-					current,
-					(current == Kind.METACODE
-						? save_head[0..$-1] ~ `("` ~ s.head[0..$-1] ~ `")`
-						: save_head[0..$] ~ s.head[0..$]),
-					s.tail);
-				
-				return true;
-			}
-			else
-				return false;
-		}
-		bool parseAlt()
-		{
-			if (chomp("`"))
-			{
-				auto save_head = head;	// workaround for ctfe
-				
-				auto s = Slice(
-					(current == Kind.METACODE ? Kind.ALT_IN_METACODE : current),
-					tail);
-				while (s.exist && !s.chomp("`"))
-				{
-					if (s.parseVar()) continue;
-					s.chomp(1);
-				}
-				this = Slice(
-					current,
-					(current == Kind.METACODE
-						? save_head[0..$-1] ~ "(`" ~ s.head[0..$-1] ~ "`)"
-						: save_head[0..$-1] ~ "` ~ \"`\" ~ `" ~ s.head[0..$-1] ~ "` ~ \"`\" ~ `"),
-					s.tail);
-				return true;
-			}
-			else
-				return false;
-		}
-		bool parseRaw()
-		{
-			if (chomp(`r"`))
-			{
-				auto save_head = head;	// workaround for ctfe
-				
-				auto s = Slice(
-					(current == Kind.METACODE ? Kind.RAW_IN_METACODE : current),
-					tail);
-				while (s.exist && !s.chomp(`"`))
-				{
-					if (s.parseVar()) continue;
-					s.chomp(1);
-				}
-				this = Slice(
-					current,
-					(current == Kind.METACODE
-						? save_head[0..$-2] ~ `(r"` ~ s.head[0..$-1] ~ `")`
-						: save_head[0..$] ~ s.head[0..$]),
-					s.tail);
-				
-				return true;
-			}
-			else
-				return false;
-		}
-		bool parseQuo()
-		{
-			if (chomp(`q{`))
-			{
-				auto save_head = head;	// workaround for ctfe
-				
-				auto s = Slice(
-					(current == Kind.METACODE ? Kind.QUO_IN_METACODE : current),
-					tail);
-				if (s.parseCode!`}`())
-				{
-					this = Slice(
-						current,
-						(current == Kind.METACODE
-							? save_head[0..$-2] ~ `(q{` ~ s.head[0..$-1] ~ `})`
-							: save_head[] ~ s.head),
-						s.tail);
-				}
-				return true;
-			}
-			else
-				return false;
-		}
-		bool parseBlk()
-		{
-			if (chomp(`{`))
-				return parseCode!`}`();
-			else
-				return false;
-		}
-		bool parseVar()
-		{
-			if (chomp(`${`))
-			{
-				if (current == Kind.METACODE)
-					if (__ctfe)
-						assert(0, "Invalid var in raw-code.");
-					else
-						throw new Exception("Invalid var in raw-code.");
-				
-				auto s = Slice(
-					Kind.METACODE,
-					tail);
-				s.parseCode!`}`();
-				
-				string open, close;
-				switch(current)
-				{
-				case Kind.CODESTR:			open = "`" , close = "`";	break;
-				case Kind.STR_IN_METACODE:	open = `"` , close = `"`;	break;
-				case Kind.ALT_IN_METACODE:	open = "`" , close = "`";	break;
-				case Kind.RAW_IN_METACODE:	open = `r"`, close = `"`;	break;
-				case Kind.QUO_IN_METACODE:	open = `q{`, close = `}`;	break;
-				}
-				
-				this = Slice(
-					current,
-					(head[0..$-2] ~ close ~ " ~ " ~ s.head[0..$-1] ~ " ~ " ~ open),
-					s.tail);
-				return true;
-			}
-			else
-				return false;
-		}
-		bool parseCode(string end=null)()
-		{
-			enum endCheck = end ? "!chomp(end)" : "true";
-			
-			while (exist && mixin(endCheck))
-			{
-				if (parseStr()) continue;
-				if (parseAlt()) continue;
-				if (parseRaw()) continue;
-				if (parseQuo()) continue;
-				if (parseBlk()) continue;
-				if (parseVar()) continue;
-				chomp(1);
-			}
-			return true;
-		}
-	}
-	string expandImpl(string code)
-	{
-		auto s = Slice(Kind.CODESTR, code);
-		s.parseCode();
-		return "`" ~ s.buffer ~ "`";
-	}
-
-}
-/**
-	Expand expression in code string
-	----
-	enum string op = "+";
-	static assert(expand!q{ 1 ${op} 2 } == q{ 1 + 2 });
-	----
-	
-	Using both mixin expression, it is easy making parameterized code-blocks.
-	----
-	template DeclFunc(string name)
-	{
-		// generates specified name function.
-		mixin(
-			mixin(expand!q{
-				int ${name}(int a){ return a; }
-			})
-		);
-	}
-	----
- */
-template expand(string code)
-{
-	enum expand = expandImpl(code);
-}
-
-
-version(unittest)
-{
-	enum op = "+";
-	template Temp(string A)
-	{
-		pragma(msg, A);
-		enum Temp = "expanded_Temp";
-	}
-}
-unittest
-{
-
-	// var in code
-	static assert(mixin(expand!q{a ${op} b}) == q{a + b});
-
-	// alt-string in code
-	static assert(mixin(expand!q{`raw string`}) == q{`raw string`});
-
-
-	// var in string 
-	static assert(mixin(expand!q{"a ${op} b"}) == q{"a + b"});
-
-	// var in raw-string
-	static assert(mixin(expand!q{r"a ${op} b"}) == q{r"a + b"});
-
-	// var in alt-string
-	static assert(mixin(expand!q{`a ${op} b`}) == q{`a + b`});
-
-	// var in quoted-string 
-	static assert(mixin(expand!q{q{a ${op} b}}) == q{q{a + b}});
-	static assert( mixin(expand!q{Temp!q{ x ${op} y }}) == q{Temp!q{ x + y }});
-
-
-	// escape sequence test
-	static assert(mixin(expand!q{"\a"})   == q{"\a"});
-	static assert(mixin(expand!q{"\xA1"}) == q{"\xA1"});
-	static assert(mixin(expand!q{"\""})   == q{"\""});
-
-
-	// var in var
-	static assert(!__traits(compiles, mixin(expand!q{${ a ${op} b }}) ));
-
-
-	static assert(mixin(expand!q{"\0"})          == q{"\0"});
-	static assert(mixin(expand!q{"\01"})         == q{"\01"});
-	static assert(mixin(expand!q{"\012"})        == q{"\012"});
-	static assert(mixin(expand!q{"\u0FFF"})      == q{"\u0FFF"});
-	static assert(mixin(expand!q{"\U00000FFF"})  == q{"\U00000FFF"});
-
-
-	// var in string in var
-	static assert(mixin(expand!q{${ Temp!" x ${op} y " }}) == "expanded_Temp");
-
-	// var in raw-string in var
-	static assert(mixin(expand!q{${ Temp!r" x ${op} y " }}) == "expanded_Temp");
-
-	// var in alt-string in var
-	static assert(mixin(expand!q{${ Temp!` x ${op} y ` }}) == "expanded_Temp");
-
-	// var in quoted-string in var
-	static assert(mixin(expand!q{${ Temp!q{ x ${op} y } }}) == "expanded_Temp");
-}
+import metastrings_expand;
 
 
 //----------------------------------------------------------------------------//

@@ -13,17 +13,29 @@ alias meta.staticMap staticMap;
 alias meta.isSame isSame;
 alias meta.allSatisfy allSatisfy;
 
+import metastrings_expand;
 
 /*private*/ interface Structural
 {
 	Object _getSource();
 }
 
+//version = Fixed_Issue4217;
+
 private template AdaptTo(Targets...)
 	if( allSatisfy!(isInterface, Targets) )
 {
 	alias staticUniq!(staticMap!(VirtualFunctionsOf, Targets)) TgtFuns;
 
+  version(Fixed_Issue4217)
+  {
+	alias meta.NameOf NameOf;
+	alias meta.TypeOf TypeOf;
+  }else{
+	template NameOf(alias A){ alias A.Name NameOf; }
+	template TypeOf(alias A){ alias A.Type TypeOf; }
+  }
+	
 	template CovariantSignatures(S)
 	{
 		alias VirtualFunctionsOf!S SrcFuns;
@@ -90,12 +102,12 @@ private template AdaptTo(Targets...)
 		this(S s){ super(s); }
 	
 	public:
-		template generateFun(string n)
+		template generateFun(size_t n)
 		{
 			enum generateFun = mixin(expand!q{
 				mixin DeclareFunction!(
-					CoTypes[${n}],	// covariant
-					NameOf!(TgtFuns[${n}]),
+					CoTypes[$n],	// covariant
+					NameOf!(TgtFuns[$n]),
 					"return source." ~ NameOf!(TgtFuns[${n}]) ~ "(args);"
 				);
 			});
@@ -103,8 +115,7 @@ private template AdaptTo(Targets...)
 		mixin mixinAll!(
 			staticMap!(
 				generateFun,
-				staticMap!(StringOf, staticIota!(0,
-					staticLength!TgtFuns))));	//workaround @@@BUG4333@@@
+				staticIota!(0, staticLength!TgtFuns)));	//workaround @@@BUG4333@@@
 	}
 }
 
