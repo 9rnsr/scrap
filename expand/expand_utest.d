@@ -95,6 +95,13 @@ unittest
 	static assert(mixin(expand!q{enum t = "new $C()";}) == q{enum t = "new C()";});
 	static assert(mixin(expand!q{enum t = "${ExpandType!`str`}";}) == q{enum t = "string";});
 	static assert(mixin(expand!q{enum t = "${ExpandTest!(10)}";}) == q{enum t = "ExpandTest!(10)";});	// template name
+	
+	// parsing comments 
+	static assert(mixin(expand!"$var // $var\n$var") == "test // $var\ntest");
+	static assert(mixin(expand!"$var /* $var */ $var") == "test /* $var */ test");
+	static assert(mixin(expand!"$var q{ /* } */ } $var") == "test q{ /* } */ } test");
+	static assert(mixin(expand!"$var /+ $var +/ $var") == "test /+ $var +/ test");
+	static assert(mixin(expand!"$var /+$var/+ $var +/ $var+/ $var") == "test /+$var/+ $var +/ $var+/ test");
 }
 // sample unittest
 unittest
