@@ -300,6 +300,35 @@ private @trusted
 			else
 				return false;
 		}
+		bool parseComment()
+		{
+			if (chomp(`//`))
+			{
+				while (exist && !chomp("\n"))
+					chomp(1);
+				return true;
+			}
+			else if (chomp(`/*`))
+			{
+				while (exist && !chomp(`*/`))
+					chomp(1);
+				return true;
+			}
+			return false;
+		}
+		bool parseNestedComment()
+		{
+			if (chomp(`/+`))
+			{
+				while (exist && !chomp(`+/`))
+				{
+					if (parseNestedComment()) continue;
+					chomp(1);
+				}
+				return true;
+			}
+			return false;
+		}
 		private void checkVarNested()
 		{
 			if (current == Kind.METACODE)
@@ -366,6 +395,8 @@ private @trusted
 				if (parseQuo()) continue;
 				if (parseBlk()) continue;
 				if (parseVar()) continue;
+				if (parseComment()) continue;
+				if (parseNestedComment()) continue;
 				chomp(1);
 			}
 			return true;
