@@ -1609,7 +1609,7 @@ version(unittest)
 // Sequences
 //----------------------------------------------------------------------------//
 
-//version = Fixed_Issue4217;
+version = Fixed_Issue4217;
 
 version(Fixed_Issue4217)
 {

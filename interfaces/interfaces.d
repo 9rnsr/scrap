@@ -20,7 +20,7 @@ import metastrings_expand;
 	Object _getSource();
 }
 
-//version = Fixed_Issue4217;
+version = Fixed_Issue4217;
 
 private template AdaptTo(Targets...)
 	if( allSatisfy!(isInterface, Targets) )
