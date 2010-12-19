@@ -151,43 +151,48 @@ struct Demangle
 			return "nan";
 		else
 		{
-			string result;
-			int sign = 1;
-			if (r < 0) sign = -1, r *= -1;
-			
-			{	ulong n = cast(ulong)r;
+			string fmtN()
+			{
+				string s;
+				ulong n = cast(ulong)r;
 				ulong i = 1;
 				while (n > 0)
 				{
 					ubyte mod = cast(ubyte)((n / i) % 10);
-					result ~= cast(char)(mod + '0');
+					s ~= cast(char)(mod + '0');
 					n -= i * mod;
 					r -= i * mod;
 					i *= 10;
 				}
-				result = reverse(result);
+				return reverse(s);
+			}
+			string fmtF(int dig_n)
+			{
+				if (r == 0) return "";
+				if (dig_n == 0) return "";
+				
+				int  dig_f = real.dig - dig_n;
+				real lim = 5.L * 10.L^^(-(dig_f+1));
+				if (r < lim) return "";
+				
+				string s = ".";
+				real i = 0.1;
+				while (r > lim)
+				{
+					ubyte mod = cast(ubyte)((r / i) % 10);
+					s ~= cast(char)(mod + '0');
+					r -= i * mod;
+					i /= 10;
+				}
+				return s;
 			}
 			
-			int dig = result.length;
-			if (r > 0 && real.dig > dig)
-			{
-				dig = real.dig - result.length;
-				real lim = 5.L * 10.L^^(-(dig+1));
-				
-				if (r >= lim)
-				{
-					result ~= ".";
-					real i = 0.1;
-					while (r > lim)
-					{
-						ubyte mod = cast(ubyte)((r / i) % 10);
-						result ~= cast(char)(mod + '0');
-						r -= i * mod;
-						i /= 10;
-					}
-				}
-			}
-			return result;
+			string sign = r < 0 ? "-" : "";
+			if (r < 0) r *= -1;
+			string nstr = fmtN();
+			string fstr = fmtF(real.dig > nstr.length ? real.dig - nstr.length : 0);
+			
+			return sign ~ nstr ~ fstr;
 		}
 	}
 
@@ -750,7 +755,7 @@ version(unittest)
 	{
 		template staticCheck1(int n)
 		{
-	//		pragma(msg, "[", n, "] ", table[n][0]);
+			pragma(msg, "[", n, "] ", table[n][0]);
 	//		pragma(msg, "    ", table[n][1]);
 	//		pragma(msg, "    ", dem(table[n][0]));
 			enum staticCheck1 = dem(table[n][0]) == table[n][1];
@@ -813,6 +818,12 @@ version(unittest)
 		printFormatReal(4.2);
 		printFormatReal(128);
 		printFormatReal(1024.234);
+		
+		pragma(msg, Demangle.formatReal(1));
+		pragma(msg, Demangle.formatReal(4.2));
+		pragma(msg, Demangle.formatReal(128));
+		pragma(msg, Demangle.formatReal(1024.123));
+		//static assert(Demangle.formatReal(4.2) == "4.2");
 	}
 }
 
