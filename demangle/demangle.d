@@ -40,16 +40,24 @@ private class MangleException : Exception
 
 struct Optional(T)
 {
+private:
 	T _payload;
 	bool filled = false;
-	
+
+public:
 	this(T data)
 	{
 		_payload = data;
 		filled = true;
 	}
 	
-	alias _payload this;
+	ref T _get()
+	{
+		assert(filled);
+		return _payload;
+	}
+	alias _get this;
+	
 	bool opCast(T:bool)(){ return filled; }
 }
 
