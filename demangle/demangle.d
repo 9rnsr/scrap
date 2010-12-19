@@ -141,14 +141,17 @@ struct Demangle
 	{
 		string s;
 		ulong i = 1;
-		while (n > 0)
-		{
+		do{
 			ubyte mod = cast(ubyte)((n / i) % 10);
 			s ~= cast(char)(mod + '0');
 			n -= i * mod;
 			i *= 10;
-		}
+		}while (n > 0)
 		return reverse(s);
+	}
+	unittest
+	{
+		static assert(Demangle.fmtInt(0)		== "0");
 	}
 	
 	static string formatReal(real e)
@@ -188,6 +191,7 @@ struct Demangle
 	}
 	unittest
 	{
+		static assert(Demangle.formatReal(0)		== "0");
 		static assert(Demangle.formatReal(1)		== "1");
 		static assert(Demangle.formatReal(4.2)		== "4.2");
 		static assert(Demangle.formatReal(128)		== "128");
@@ -195,19 +199,28 @@ struct Demangle
 		static assert(Demangle.formatReal(-1.4142)	== "-1.4142");
 	}
 
+	static real pow2(int signed_n)
+	{
+		uint n = signed_n < 0 ? -signed_n : signed_n;
+		real result = 1.0L;//(n&1) ? 2.0L : 1.0L;
+		for (uint shift=1; n; ++shift,n>>=1)
+			if (n&1)
+				result *= 1<<shift;
+		if (signed_n < 0)
+			result = 1.0L / result;
+		return result;
+	}
+	unittest
+	{
+		static assert(pow2(0) == 1);
+		static assert(pow2(1) == 2);
+		static assert(pow2(2) == 4);
+	//	static assert(pow2(8) == 256);
+		static assert(pow2(-1) == 1.0L/2.0L);
+	}
+	
 	static real bytes2real(ubyte[real.sizeof] data)
 	{
-		static real pow2(int signed_n)
-		{
-			uint n = signed_n < 0 ? -signed_n : signed_n;
-			real result = (n&1) ? 2.0L : 1.0L;
-			for (uint shift=1; n; ++shift,n>>=1)
-				if (n&1)
-					result *= 1<<shift;
-			if (signed_n < 0)
-				result = 1.0L / result;
-			return result;
-		}
 		static assert(pow2(2) == 4);
 		static assert(pow2(0) == 1);
 		static assert(pow2(-2) == 0.25);
@@ -218,9 +231,11 @@ struct Demangle
 		static assert(mant_dig == 64);
 		static assert(expo_dig == 15);
 		enum int  expo_bias = cast(int)0x3FFF;
-		//enum real mant_bias = 2 ^^ cast(real)(mant_dig-1);
-		enum real mant_bias = pow2(mant_dig-1);
+		enum real mant_bias = 2 ^^ cast(real)(mant_dig-1);
+	//	enum real mant_bias = pow2(mant_dig-1);
 		version(LittleEndian){}else static assert(0);
+		pragma(msg, "expo_bias = ", expo_bias);
+		pragma(msg, "mant_bias = ", mant_bias, ", ^^=", 2 ^^ cast(real)(mant_dig-1));
 		
 		auto  sign = data[9] & 0x80 ? -1 : 1;
 		uint  expo = ((cast(uint)data[9]&0x7F)<<8) + cast(uint)data[8];
@@ -250,6 +265,14 @@ struct Demangle
 			//auto r = sign * mant_u * 2^^cast(real)expo_s;
 			auto r = sign * mant_u * pow2(expo_s);
 	//		writefln("r = %s", r);
+		//	if (r!=4.2 && r!=6.8)
+		//	assert(0,
+		//		""~fmtInt(sign)~"/"~fmtInt(mant)~"/"~formatReal(mant_u)~"/"~fmtInt(expo_s)~"/=/"~
+		//	//	  ""~fmtInt(data[0])~"/"~fmtInt(data[1])~"/"~fmtInt(data[2])~"/"~fmtInt(data[3])~"/"~fmtInt(data[4])
+		//	//	~"/"~fmtInt(data[5])~"/"~fmtInt(data[6])~"/"~fmtInt(data[7])~"/"~fmtInt(data[8])~"/"~fmtInt(data[9])
+		//		  ""~fmtInt(data[9])~"/"~fmtInt(data[8])~"/"~fmtInt(data[7])~"/"~fmtInt(data[6])~"/"~fmtInt(data[5])
+		//		~"/"~fmtInt(data[4])~"/"~fmtInt(data[3])~"/"~fmtInt(data[2])~"/"~fmtInt(data[1])~"/"~fmtInt(data[0])
+		//		~"/"~formatReal(r));
 			return r;
 		}
 	}
@@ -705,8 +728,8 @@ version(unittest)
 		[ "_D8demangle8demangleFAaZAa", "char[] demangle.demangle(char[])" ],
 		[ "_D6object6Object8opEqualsFC6ObjectZi", "int object.Object.opEquals(class Object)" ],
 		[ "_D4test2dgDFiYd", "double delegate(int, ...) test.dg" ],
-/**/	[ "_D4test58__T9factorialVde67666666666666860140VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, char[5] \"hello\"c, void* null).factorial" ],
-/**/	[ "_D4test101__T9factorialVde67666666666666860140Vrc9a999999999999d9014000000000000000c00040VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, cdouble 6.8+3i, char[5] \"hello\"c, void* null).factorial" ],
+		[ "_D4test58__T9factorialVde67666666666666860140VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, char[5] \"hello\"c, void* null).factorial" ],
+		[ "_D4test101__T9factorialVde67666666666666860140Vrc9a999999999999d9014000000000000000c00040VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, cdouble 6.8+3i, char[5] \"hello\"c, void* null).factorial" ],
 		[ "_D4test34__T3barVG3uw3_616263VG3wd3_646566Z1xi", "int test.bar!(wchar[3] \"abc\"w, dchar[3] \"def\"d).x" ],
 		[ "_D8demangle4testFLC6ObjectLDFLiZiZi", "int demangle.test(lazy class Object, lazy int delegate(lazy int))"],
 		[ "_D8demangle4testFAiXi", "int demangle.test(int[] ...)"],
