@@ -113,11 +113,12 @@ struct Demangle
 		else
 			throw new MangleException();
 	}+/
+	enum error = q{return typeof(return)();};
 
 	static Optional!ubyte ascii2hex(char c)
 	{
 		if (!isxdigit(c))
-			return typeof(return)();//error();
+			mixin(error);
 		return typeof(return)(
 			  cast(ubyte)
 			  ( (c >= 'a') ? c - 'a' + 10 :
@@ -254,13 +255,13 @@ struct Demangle
 		ubyte[real.sizeof] data;
 		
 		if (ni + 10 * 2 > name.length)
-			return typeof(return)();//error();
+			mixin(error);
 		for (size_t i = 0; i < 10; i++)
 		{	ubyte b;
 
 			auto hex1 = ascii2hex(name[ni + i * 2    ]);
 			auto hex2 = ascii2hex(name[ni + i * 2 + 1]);
-			if (!hex1 || !hex2) return typeof(return)();
+			if (!hex1 || !hex2) mixin(error);
 			b = cast(ubyte)((hex1 << 4) + hex2);
 			data[i] = b;
 		}
@@ -283,7 +284,7 @@ struct Demangle
 		while (ni < name.length && isdigit(name[ni]))
 		{	int i = name[ni] - '0';
 			if (result > (size_t.max - i) / 10)
-				return typeof(return)();//error();
+				mixin(error);
 			result = result * 10 + i;
 			ni++;
 		}
@@ -295,9 +296,9 @@ struct Demangle
 		//writefln("parseSymbolName() %d", ni);
 		//size_t i = parseNumber();
 		auto i = parseNumber();
-		if (!i) return typeof(return)();
+		if (!i) mixin(error);
 		if (ni + i > name.length)
-			return typeof(return)();//error();
+			mixin(error);
 		string result;
 		if (i >= 5 &&
 			name[ni] == '_' &&
@@ -339,7 +340,7 @@ struct Demangle
 			if (result.length)
 				result ~= ".";
 			auto s = parseSymbolName();
-			if (!s) return typeof(return)();
+			if (!s) mixin(error);
 			result ~= s;
 		}
 		return typeof(return)(result);
@@ -352,7 +353,7 @@ struct Demangle
 		bool hasthisptr = false; /// For function/delegate types: expects a 'this' pointer as last argument
 	  Lagain:
 		if (ni >= name.length)
-			return typeof(return)();//error();
+			mixin(error);
 		string p;
 		switch (name[ni++])
 		{
@@ -389,7 +390,7 @@ struct Demangle
 
 			case 'G':								 // static array
 			{	size_t ns = ni;
-				if (!parseNumber()) return typeof(return)();
+				if (!parseNumber()) mixin(error);
 				size_t ne = ni;
 				p = parseType() ~ "[" ~ name[ns .. ne] ~ "]";
 				goto L1;
@@ -431,13 +432,13 @@ struct Demangle
 				while (1)
 				{
 					if (ni >= name.length)
-						return typeof(return)();//error();
+						mixin(error);
 					char c = name[ni];
 					if (c == 'Z')
 						break;
 					if (c == 'X')
 					{
-						if (!args.length) return typeof(return)();//error();
+						if (!args.length) mixin(error);
 						args ~= " ...";
 						break;
 					}
@@ -502,7 +503,7 @@ struct Demangle
 
 			L1:
 				if (isdelegate)
-					return typeof(return)();//error();				// 'D' must be followed by function
+					mixin(error);				// 'D' must be followed by function
 				if (identifier.length)
 					p ~= " " ~ identifier;
 				return typeof(return)(p);
@@ -518,7 +519,7 @@ struct Demangle
 	Optional!string parseTemplateInstanceName()
 	{
 		auto s = parseSymbolName();
-		if (!s) return typeof(return)();
+		if (!s) mixin(error);
 		auto result = s ~ "!(";
 		int nargs;
 
@@ -526,7 +527,7 @@ struct Demangle
 		{	size_t i;
 
 			if (ni >= name.length)
-				return typeof(return)();//error();
+				mixin(error);
 			if (nargs && name[ni] != 'Z')
 				result ~= ", ";
 			nargs++;
@@ -539,7 +540,7 @@ struct Demangle
 				case 'V':
 					result ~= parseType() ~ " ";
 					if (ni >= name.length)
-						return typeof(return)();//error();
+						mixin(error);
 					switch (name[ni++])
 					{
 						case '0': .. case '9':
@@ -554,7 +555,7 @@ struct Demangle
 							while (ni < name.length && isdigit(name[ni]))
 								ni++;
 							if (i == ni)
-								return typeof(return)();//error();
+								mixin(error);
 							result ~= "-" ~ name[i .. ni];
 							break;
 
@@ -564,17 +565,17 @@ struct Demangle
 
 						case 'e':
 							auto str = getReal();
-							if (!str) return typeof(return)();
+							if (!str) mixin(error);
 							result ~= str;
 							break;
 
 						case 'c':
 							auto str = getReal();
-							if (!str) return typeof(return)();
+							if (!str) mixin(error);
 							result ~= str;
 							result ~= '+';
 							str = getReal();
-							if (!str) return typeof(return)();
+							if (!str) mixin(error);
 							result ~= str;
 							result ~= 'i';
 							break;
@@ -586,16 +587,16 @@ struct Demangle
 							if (m == 'a')
 								m = 'c';
 							size_t n = parseNumber();
-							if (!n) return typeof(return)();
+							if (!n) mixin(error);
 							if (ni >= name.length || name[ni++] != '_' ||
 								ni + n * 2 > name.length)
-								return typeof(return)();//error();
+								mixin(error);
 							result ~= '"';
 							for (i = 0; i < n; i++)
 							{
 								auto hex1 = ascii2hex(name[ni + i * 2    ]);
 								auto hex2 = ascii2hex(name[ni + i * 2 + 1]);
-								if (!hex1 || !hex2) return typeof(return)();
+								if (!hex1 || !hex2) mixin(error);
 								result ~= cast(char)((hex1 << 4) + hex2);
 							}
 							ni += n * 2;
@@ -605,14 +606,14 @@ struct Demangle
 						}
 
 						default:
-							return typeof(return)();//error();
+							mixin(error);
 							break;
 					}
 					continue;
 
 				case 'S':
 					auto sn = parseSymbolName();
-					if (!sn) return typeof(return)();
+					if (!sn) mixin(error);
 					result ~= sn;
 					continue;
 
@@ -620,7 +621,7 @@ struct Demangle
 					break;
 
 				default:
-					return typeof(return)();//error();
+					mixin(error);
 			}
 			break;
 		}
