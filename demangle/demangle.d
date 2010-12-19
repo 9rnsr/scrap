@@ -670,9 +670,17 @@ Lnot:
 }
 
 
+string demangleType(string name)
+{
+	auto dem = Demangle(name, 0);
+	auto s = dem.parseType();
+	if (!s) return name;
+	return s;
+}
+
 version(unittest)
 {
-	static const string[2][] table =
+	static const symbols =
 	[
 		[ "printf", 	 "printf" ],
 		[ "_foo",		 "_foo" ],
@@ -691,32 +699,89 @@ version(unittest)
 		[ "_D6plugin8generateFiiZAxa", "const(char)[] plugin.generate(int, int)"],
 		[ "_D6plugin8generateFiiZAOa", "shared(char)[] plugin.generate(int, int)"]
 	];
+	static const baseTypes =
+	[
+		[ void		.mangleof,	"void"		],
+		[ bool		.mangleof,	"bool"		],
+		[ byte		.mangleof,	"byte"		],
+		[ ubyte		.mangleof,	"ubyte"		],
+		[ short		.mangleof,	"short"		],
+		[ ushort	.mangleof,	"ushort"	],
+		[ int		.mangleof,	"int"		],
+		[ uint		.mangleof,	"uint"		],
+		[ long		.mangleof,	"long"		],
+		[ ulong		.mangleof,	"ulong"		],
+	//	[ cent		.mangleof,	"cent"		],
+	//	[ ucent		.mangleof,	"ucent"		],
+		[ float		.mangleof,	"float"		],
+		[ double	.mangleof,	"double"	],
+		[ real		.mangleof,	"real"		],
+		[ ifloat	.mangleof,	"ifloat"	],
+		[ idouble	.mangleof,	"idouble"	],
+		[ ireal		.mangleof,	"ireal"		],
+		[ cfloat	.mangleof,	"cfloat"	],
+		[ cdouble	.mangleof,	"cdouble"	],
+		[ creal		.mangleof,	"creal"		],
+		[ char		.mangleof,	"char"		],
+		[ wchar		.mangleof,	"wchar"		],
+		[ dchar		.mangleof,	"dchar"		]
+	];
+	static const arrayTypes =
+	[
+		[ (int[])			.mangleof,	"int[]"			],
+		[ (int[][])			.mangleof,	"int[][]"		]
+	//	[ (int[string])		.mangleof,	"int[string]"	],	object.AssociativeArray!(immutable(char), int).AssociativeArray
+		
+	];
+	static const pointerTypes =
+	[
+		[ (int*)			.mangleof,	"int*"		],
+		[ (int**)			.mangleof,	"int**"		]
+	];
+	static const modifiers =
+	[
+		[ (const(int))			.mangleof,	"const(int)"			],
+		[ (immutable(int))		.mangleof,	"immutable(int)"		],
+		[ (shared(int))			.mangleof,	"shared(int)"			],
+		[ (shared(const(int)))	.mangleof,	"shared(const(int))"	],
+	];
+
+	template staticCheck(alias table, alias dem)
+	{
+		template staticCheck1(int n)
+		{
+	//		pragma(msg, "[", n, "] ", table[n][0]);
+	//		pragma(msg, "    ", table[n][1]);
+	//		pragma(msg, "    ", dem(table[n][0]));
+			enum staticCheck1 = dem(table[n][0]) == table[n][1];
+		}
+		
+		enum result = 
+			allSatisfy!(staticMap!(
+				staticCheck1,
+				staticIota!(0, table.length)));
+	}
 }
 unittest
 {
 	debug(demangle) printf("demangle.demangle.unittest\n");
 
-
-	foreach (i, name; table)
+	foreach (i, name; symbols)
 	{
 		string r = demangle(name[0]);
 		assert(r == name[1],
 				"table entry #" ~ to!string(i) ~ ": '" ~ name[0]
 				~ "' demangles as '" ~ r ~ "' but is expected to be '"
 				~ name[1] ~ "'");
-
 	}
-}
-template staticCheck(int n)
-{
-	pragma(msg, "[", n, "] ", table[n][0]);
-	pragma(msg, "    ", table[n][1]);
-	pragma(msg, "    ", demangle(table[n][0]));
-	enum staticCheck = demangle(table[n][0]) == table[n][1];
-}
-unittest
-{
-	static assert(allSatisfy!(staticMap!(staticCheck, staticIota!(0, table.length))));
+
+//	static assert(staticCheck!(symbols, demangle).result);
+
+	static assert(staticCheck!(baseTypes,		demangleType).result);
+	static assert(staticCheck!(arrayTypes,		demangleType).result);
+	static assert(staticCheck!(baseTypes,		demangleType).result);
+	static assert(staticCheck!(pointerTypes,	demangleType).result);
+	static assert(staticCheck!(modifiers,		demangleType).result);
 }
 
 version(unittest)
