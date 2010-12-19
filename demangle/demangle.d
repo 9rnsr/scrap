@@ -137,10 +137,13 @@ struct Demangle
 		return result.idup;
 	}
 
-	static string fmtInt(ulong n)
+	static string formatLong(long n)
 	{
+		string sign;
+		if (n < 0) sign = "-", n = -n;
+		
 		string s;
-		ulong i = 1;
+		long i = 1;
 		do{
 			ubyte mod = cast(ubyte)((n / i) % 10);
 			s ~= cast(char)(mod + '0');
@@ -151,15 +154,15 @@ struct Demangle
 	}
 	unittest
 	{
-		static assert(Demangle.fmtInt(0)		== "0");
+		static assert(Demangle.formatLong(0)	== "0");
 	}
 	
 	static string formatReal(real e)
 	{
-		if (e == +cast(real)0)
+		if (e == +0.0L)
 			return "0";
-		else if (e == -cast(real)0)
-			return "-0";
+	//	else if (e == -0.0L)
+	//		return "-0";
 		else if (e == +real.infinity)
 			return "inf";
 		else if (e == -real.infinity)
@@ -171,7 +174,7 @@ struct Demangle
 			string sign = e < 0 ? "-" : "";
 			if (e < 0) e *= -1;
 			
-			string nstr = fmtInt(cast(ulong)e);
+			string nstr = formatLong(cast(long)e);
 			e -= cast(ulong)e;
 			
 			string fstr;
@@ -180,7 +183,7 @@ struct Demangle
 			if (dig <= 0) goto Lend;
 			
 			auto nf = cast(ulong)(e * 10.0L^^(dig+1));
-			fstr = "." ~ fmtInt(cast(ulong)(nf + (nf % 10 >= 5 ? 10 : 0) / 10));
+			fstr = "." ~ formatLong(cast(long)(nf + (nf % 10 >= 5 ? 10 : 0) / 10));
 			auto len = fstr.length;
 			while (fstr[len-1] == '0') --len;
 			fstr = fstr[0..len];
@@ -191,48 +194,26 @@ struct Demangle
 	}
 	unittest
 	{
-		static assert(Demangle.formatReal(0)		== "0");
-		static assert(Demangle.formatReal(1)		== "1");
-		static assert(Demangle.formatReal(4.2)		== "4.2");
-		static assert(Demangle.formatReal(128)		== "128");
-		static assert(Demangle.formatReal(1024.123)	== "1024.123");
-		static assert(Demangle.formatReal(-1.4142)	== "-1.4142");
+		static assert(Demangle.formatReal(+0.0L)			== "0");
+	//	static assert(Demangle.formatReal(-0.0L)			== "-0");
+		static assert(Demangle.formatReal(+real.infinity)	== "inf");
+		static assert(Demangle.formatReal(-real.infinity)	== "-inf");
+		static assert(Demangle.formatReal(real.nan)			== "nan");
+		static assert(Demangle.formatReal(1)				== "1");
+		static assert(Demangle.formatReal(4.2)				== "4.2");
+		static assert(Demangle.formatReal(0.24)				== "0.24");
+		static assert(Demangle.formatReal(1024.123)			== "1024.123");
+		static assert(Demangle.formatReal(-1.4142)			== "-1.4142");
 	}
 
-	static real pow2(int signed_n)
-	{
-		uint n = signed_n < 0 ? -signed_n : signed_n;
-		real result = 1.0L;//(n&1) ? 2.0L : 1.0L;
-		for (uint shift=1; n; ++shift,n>>=1)
-			if (n&1)
-				result *= 1<<shift;
-		if (signed_n < 0)
-			result = 1.0L / result;
-		return result;
-	}
-	unittest
-	{
-		static assert(pow2(0) == 1);
-		static assert(pow2(1) == 2);
-		static assert(pow2(2) == 4);
-	//	static assert(pow2(8) == 256);
-		static assert(pow2(-1) == 1.0L/2.0L);
-	}
-	
 	static real bytes2real(ubyte[real.sizeof] data)
 	{
-		static assert(pow2(2) == 4);
-		static assert(pow2(0) == 1);
-		static assert(pow2(-2) == 0.25);
-		
-		
 		enum uint mant_dig = real.mant_dig;
 		enum uint expo_dig = real.sizeof*8 - mant_dig - 1;
 		static assert(mant_dig == 64);
 		static assert(expo_dig == 15);
 		enum int  expo_bias = cast(int)0x3FFF;
 		enum real mant_bias = 2 ^^ cast(real)(mant_dig-1);
-	//	enum real mant_bias = pow2(mant_dig-1);
 		version(LittleEndian){}else static assert(0);
 		pragma(msg, "expo_bias = ", expo_bias);
 		pragma(msg, "mant_bias = ", mant_bias, ", ^^=", 2 ^^ cast(real)(mant_dig-1));
@@ -263,15 +244,15 @@ struct Demangle
 			real mant_u = cast(real)mant / mant_bias;
 	//		writefln("r = %s * %s * 2^%s", sign, mant_u, expo_s);
 			//auto r = sign * mant_u * 2^^cast(real)expo_s;
-			auto r = sign * mant_u * pow2(expo_s);
+			auto r = sign * mant_u * 2.0L^^expo_s;
 	//		writefln("r = %s", r);
 		//	if (r!=4.2 && r!=6.8)
 		//	assert(0,
-		//		""~fmtInt(sign)~"/"~fmtInt(mant)~"/"~formatReal(mant_u)~"/"~fmtInt(expo_s)~"/=/"~
-		//	//	  ""~fmtInt(data[0])~"/"~fmtInt(data[1])~"/"~fmtInt(data[2])~"/"~fmtInt(data[3])~"/"~fmtInt(data[4])
-		//	//	~"/"~fmtInt(data[5])~"/"~fmtInt(data[6])~"/"~fmtInt(data[7])~"/"~fmtInt(data[8])~"/"~fmtInt(data[9])
-		//		  ""~fmtInt(data[9])~"/"~fmtInt(data[8])~"/"~fmtInt(data[7])~"/"~fmtInt(data[6])~"/"~fmtInt(data[5])
-		//		~"/"~fmtInt(data[4])~"/"~fmtInt(data[3])~"/"~fmtInt(data[2])~"/"~fmtInt(data[1])~"/"~fmtInt(data[0])
+		//		""~formatLong(sign)~"/"~formatLong(mant)~"/"~formatReal(mant_u)~"/"~formatLong(expo_s)~"/=/"~
+		//	//	  ""~formatLong(data[0])~"/"~formatLong(data[1])~"/"~formatLong(data[2])~"/"~formatLong(data[3])~"/"~formatLong(data[4])
+		//	//	~"/"~formatLong(data[5])~"/"~formatLong(data[6])~"/"~formatLong(data[7])~"/"~formatLong(data[8])~"/"~formatLong(data[9])
+		//		  ""~formatLong(data[9])~"/"~formatLong(data[8])~"/"~formatLong(data[7])~"/"~formatLong(data[6])~"/"~formatLong(data[5])
+		//		~"/"~formatLong(data[4])~"/"~formatLong(data[3])~"/"~formatLong(data[2])~"/"~formatLong(data[1])~"/"~formatLong(data[0])
 		//		~"/"~formatReal(r));
 			return r;
 		}
@@ -326,7 +307,7 @@ struct Demangle
 		auto iopt = parseNumber();
 		if (!iopt) mixin(error);
 		auto i = iopt._payload;	// workaround for CTFE
-		//if(ni>5)assert(0, ""~fmtInt(i)~"/"~fmtInt(ni)~"/"~fmtInt(name.length));
+		//if(ni>5)assert(0, ""~formatLong(i)~"/"~formatLong(ni)~"/"~formatLong(name.length));
 		if (ni + i > name.length)
 			mixin(error);
 		string result;
@@ -342,7 +323,7 @@ struct Demangle
 		//	{
 				result = parseTemplateInstanceName();
 				//i==58, nisave=9, 
-				//assert(0, ""~fmtInt(i)~"/"~fmtInt(nisave)~"/"~fmtInt(ni)~"/"~result);
+				//assert(0, ""~formatLong(i)~"/"~formatLong(nisave)~"/"~formatLong(ni)~"/"~result);
 				if (ni != nisave + i)
 					err = true;
 		//	}
@@ -351,7 +332,7 @@ struct Demangle
 		//		err = true;
 		//	}
 			ni = nisave;
-			//assert(0, ""~fmtInt(err)~"/"~name[ni..$]);
+			//assert(0, ""~formatLong(err)~"/"~name[ni..$]);
 			if (err)
 				goto L1;
 			goto L2;
