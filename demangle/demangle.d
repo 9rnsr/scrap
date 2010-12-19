@@ -130,11 +130,11 @@ struct Demangle
 
 	static string reverse(string s)
 	{
-		char[] result;
-		result.length = s.length;
+		char[] r;
+		r.length = s.length;
 		foreach (i; 0..s.length)
-			result[$-1-i] = s[i];
-		return result.idup;
+			r[$-1-i] = s[i];
+		return r.idup;
 	}
 
 	static string formatLong(long n)
@@ -157,32 +157,32 @@ struct Demangle
 		static assert(Demangle.formatLong(0)	== "0");
 	}
 	
-	static string formatReal(real e)
+	static string formatReal(real r)
 	{
-		if (e == +0.0L)
+		if (r == +0.0L)
 			return "0";
-	//	else if (e == -0.0L)
+	//	else if (r == -0.0L)
 	//		return "-0";
-		else if (e == +real.infinity)
+		else if (r == +real.infinity)
 			return "inf";
-		else if (e == -real.infinity)
+		else if (r == -real.infinity)
 			return "-inf";
-		else if (e !<>= 0)
+		else if (r !<>= 0)
 			return "nan";
 		else
 		{
-			string sign = e < 0 ? "-" : "";
-			if (e < 0) e *= -1;
+			string sign = r < 0 ? "-" : "";
+			if (r < 0) r *= -1;
 			
-			string nstr = formatLong(cast(long)e);
-			e -= cast(ulong)e;
+			string nstr = formatLong(cast(long)r);
+			r -= cast(ulong)r;
 			
 			string fstr;
-			if (e == 0) goto Lend;
+			if (r == 0) goto Lend;
 			int dig = real.dig - nstr.length;
 			if (dig <= 0) goto Lend;
 			
-			auto nf = cast(ulong)(e * 10.0L^^(dig+1));
+			auto nf = cast(ulong)(r * 10.0L^^(dig+1));
 			fstr = "." ~ formatLong(cast(long)(nf + (nf % 10 >= 5 ? 10 : 0) / 10));
 			auto len = fstr.length;
 			while (fstr[len-1] == '0') --len;
@@ -215,8 +215,8 @@ struct Demangle
 		enum int  expo_bias = cast(int)0x3FFF;
 		enum real mant_bias = 2 ^^ cast(real)(mant_dig-1);
 		version(LittleEndian){}else static assert(0);
-		pragma(msg, "expo_bias = ", expo_bias);
-		pragma(msg, "mant_bias = ", mant_bias, ", ^^=", 2 ^^ cast(real)(mant_dig-1));
+////	pragma(msg, "expo_bias = ", expo_bias);
+////	pragma(msg, "mant_bias = ", mant_bias, ", ^^=", 2 ^^ cast(real)(mant_dig-1));
 		
 		auto  sign = data[9] & 0x80 ? -1 : 1;
 		uint  expo = ((cast(uint)data[9]&0x7F)<<8) + cast(uint)data[8];
@@ -228,9 +228,9 @@ struct Demangle
 					  + (cast(ulong)data[2] << 16)
 					  + (cast(ulong)data[1] <<  8)
 					  + (cast(ulong)data[0] <<  0) );
-	//	writefln("byte2real data = %x", data);
-	//	writefln("byte2real mant = %x", mant);
-	//	writefln("byte2real expo = %x", expo);
+////	writefln("byte2real data = %x", data);
+////	writefln("byte2real mant = %x", mant);
+////	writefln("byte2real expo = %x", expo);
 		if (expo == 0x7FFF)
 			if (mant != 0)
 				return real.nan;
@@ -242,19 +242,7 @@ struct Demangle
 		{
 			int  expo_s = cast(int )expo - expo_bias;
 			real mant_u = cast(real)mant / mant_bias;
-	//		writefln("r = %s * %s * 2^%s", sign, mant_u, expo_s);
-			//auto r = sign * mant_u * 2^^cast(real)expo_s;
-			auto r = sign * mant_u * 2.0L^^expo_s;
-	//		writefln("r = %s", r);
-		//	if (r!=4.2 && r!=6.8)
-		//	assert(0,
-		//		""~formatLong(sign)~"/"~formatLong(mant)~"/"~formatReal(mant_u)~"/"~formatLong(expo_s)~"/=/"~
-		//	//	  ""~formatLong(data[0])~"/"~formatLong(data[1])~"/"~formatLong(data[2])~"/"~formatLong(data[3])~"/"~formatLong(data[4])
-		//	//	~"/"~formatLong(data[5])~"/"~formatLong(data[6])~"/"~formatLong(data[7])~"/"~formatLong(data[8])~"/"~formatLong(data[9])
-		//		  ""~formatLong(data[9])~"/"~formatLong(data[8])~"/"~formatLong(data[7])~"/"~formatLong(data[6])~"/"~formatLong(data[5])
-		//		~"/"~formatLong(data[4])~"/"~formatLong(data[3])~"/"~formatLong(data[2])~"/"~formatLong(data[1])~"/"~formatLong(data[0])
-		//		~"/"~formatReal(r));
-			return r;
+			return sign * mant_u * 2.0L^^expo_s;
 		}
 	}
 
@@ -265,21 +253,15 @@ struct Demangle
 		if (ni + 10 * 2 > name.length)
 			mixin(error);
 		for (size_t i = 0; i < 10; i++)
-		{	ubyte b;
-
+		{
 			auto hex1 = ascii2hex(name[ni + i * 2    ]);
 			auto hex2 = ascii2hex(name[ni + i * 2 + 1]);
 			if (!hex1 || !hex2) mixin(error);
-			b = cast(ubyte)((hex1 << 4) + hex2);
-			data[i] = b;
+			data[i] = cast(ubyte)((hex1 << 4) + hex2);
 		}
 		ni += 10 * 2;
 		if (__ctfe)
-		{
-	//		writefln("data = %s", data);
-		//	return typeof(return)(format(bytes2real(data)));
 			return typeof(return)(formatReal(bytes2real(data)));
-		}
 		else
 			return typeof(return)(format(*cast(real*)&data[0]));
 	}
@@ -296,18 +278,15 @@ struct Demangle
 			result = result * 10 + i;
 			ni++;
 		}
-		//if (ni==48)assert(0, name[ni..$]);
 		return typeof(return)(result);
 	}
 
 	Optional!string parseSymbolName()
 	{
 		//writefln("parseSymbolName() %d", ni);
-		//size_t i = parseNumber();
 		auto iopt = parseNumber();
 		if (!iopt) mixin(error);
-		auto i = iopt._payload;	// workaround for CTFE
-		//if(ni>5)assert(0, ""~formatLong(i)~"/"~formatLong(ni)~"/"~formatLong(name.length));
+		size_t i = iopt;	// workaround for CTFE
 		if (ni + i > name.length)
 			mixin(error);
 		string result;
@@ -321,9 +300,9 @@ struct Demangle
 			ni += 3;
 		//	try
 		//	{
-				result = parseTemplateInstanceName();
-				//i==58, nisave=9, 
-				//assert(0, ""~formatLong(i)~"/"~formatLong(nisave)~"/"~formatLong(ni)~"/"~result);
+				auto t = parseTemplateInstanceName();
+				if (!t) mixin(error);
+				result = t;
 				if (ni != nisave + i)
 					err = true;
 		//	}
@@ -332,7 +311,6 @@ struct Demangle
 		//		err = true;
 		//	}
 			ni = nisave;
-			//assert(0, ""~formatLong(err)~"/"~name[ni..$]);
 			if (err)
 				goto L1;
 			goto L2;
@@ -354,7 +332,6 @@ struct Demangle
 			if (result.length)
 				result ~= ".";
 			auto s = parseSymbolName();
-			//if (ni>50)assert(0, s ~ " / " ~ name[ni .. $]);
 			if (!s) mixin(error);
 			result ~= s;
 		}
@@ -396,28 +373,35 @@ struct Demangle
 			case 'w':		p = "dchar";	goto L1;
 
 			case 'A':								 // dynamic array
-				p = parseType() ~ "[]";
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = t ~ "[]";
 				goto L1;
 
 			case 'P':								 // pointer
-				p = parseType() ~ "*";
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = t ~ "*";
 				goto L1;
 
 			case 'G':								 // static array
 			{	size_t ns = ni;
 				auto n = parseNumber();		// workaround for CTFE(auto n == ...)
-//				assert(0, name[ni..$]);
 				if (!n) mixin(error);
-//				assert(0, name[ni..$]);
 				size_t ne = ni;
-				p = parseType() ~ "[" ~ name[ns .. ne] ~ "]";
-//				assert(0, p);
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = t ~ "[" ~ name[ns .. ne] ~ "]";
 				goto L1;
 			}
 
 			case 'H':								 // associative array
-				p = parseType();
-				p = parseType() ~ "[" ~ p ~ "]";
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = t;
+				t = parseType();
+				if (!t) mixin(error);
+				p = t ~ "[" ~ p ~ "]";
 				goto L1;
 
 			case 'D':								 // delegate
@@ -429,15 +413,21 @@ struct Demangle
 				goto Lagain;
 
 			case 'y':
-				p = "immutable(" ~ parseType() ~ ")";
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = "immutable(" ~ t ~ ")";
 				goto L1;
 
 			case 'x':
-				p = "const(" ~ parseType() ~ ")";
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = "const(" ~ t ~ ")";
 				goto L1;
 
 			case 'O':
-				p = "shared(" ~ parseType() ~ ")";
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = "shared(" ~ t ~ ")";
 				goto L1;
 
 			case 'F':								 // D function
@@ -481,7 +471,9 @@ struct Demangle
 							goto default;
 
 						default:
-							args ~= parseType();
+							auto t = parseType();
+							if (!t) mixin(error);
+							args ~= t;
 							continue;
 
 						case 'Y':
@@ -501,10 +493,14 @@ struct Demangle
 						case 'V': p = "extern (Pascal) ";	break; // Pascal function
 						default:  assert(0);
 					}
-					p ~= parseType() ~ " " ~ identifier ~ "(" ~ args ~ ")";
+					auto t = parseType();
+					if (!t) mixin(error);
+					p ~= t ~ " " ~ identifier ~ "(" ~ args ~ ")";
 					return typeof(return)(p);
 				}
-				p = parseType() ~
+				auto t = parseType();
+				if (!t) mixin(error);
+				p = t ~
 					(isdelegate ? " delegate(" : " function(") ~
 					args ~ ")";
 				isdelegate = 0;
@@ -517,7 +513,9 @@ struct Demangle
 			case 'T':	p = "typedef ";		goto L2;
 
 			L2:
-				p ~= parseQualifiedName();
+				auto t = parseQualifiedName();
+				if (!t) mixin(error);
+				p ~= t;
 				goto L1;
 
 			L1:
@@ -553,11 +551,15 @@ struct Demangle
 			switch (name[ni++])
 			{
 				case 'T':
-					result ~= parseType();
+					auto t = parseType();
+					if (!t) mixin(error);
+					result ~= t;
 					continue;
 
 				case 'V':
-					result ~= parseType() ~ " ";
+					auto t = parseType();
+					if (!t) mixin(error);
+					result ~= t ~ " ";
 					if (ni >= name.length)
 						mixin(error);
 					switch (name[ni++])
@@ -583,19 +585,19 @@ struct Demangle
 							break;
 
 						case 'e':
-							auto str = getReal();
-							if (!str) mixin(error);
-							result ~= str;
+							t = getReal();
+							if (!t) mixin(error);
+							result ~= t;
 							break;
 
 						case 'c':
-							auto str = getReal();
-							if (!str) mixin(error);
-							result ~= str;
+							t = getReal();
+							if (!t) mixin(error);
+							result ~= t;
 							result ~= '+';
-							str = getReal();
-							if (!str) mixin(error);
-							result ~= str;
+							t = getReal();
+							if (!t) mixin(error);
+							result ~= t;
 							result ~= 'i';
 							break;
 
@@ -605,8 +607,9 @@ struct Demangle
 						{	char m = name[ni - 1];
 							if (m == 'a')
 								m = 'c';
-							size_t n = parseNumber();
-							if (!n) mixin(error);
+							auto tn = parseNumber();
+							if (!tn) mixin(error);
+							size_t n = tn;
 							if (ni >= name.length || name[ni++] != '_' ||
 								ni + n * 2 > name.length)
 								mixin(error);
@@ -631,9 +634,9 @@ struct Demangle
 					continue;
 
 				case 'S':
-					auto sn = parseSymbolName();
-					if (!sn) mixin(error);
-					result ~= sn;
+					auto t = parseSymbolName();
+					if (!t) mixin(error);
+					result ~= t;
 					continue;
 
 				case 'Z':
@@ -661,17 +664,16 @@ string demangle(string name)
 	//	try
 	//	{
 			string result;
-			auto s = dem.parseQualifiedName();
-			if (!s) goto Lnot;
-			//assert(0, s);
-			result = s;
-			s = dem.parseType(result);
-			if (!s) goto Lnot;
-			result = s;
+			auto t = dem.parseQualifiedName();
+			if (!t) goto Lnot;
+			result = t;
+			t = dem.parseType(result);
+			if (!t) goto Lnot;
+			result = t;
 			while(dem.ni < dem.name.length){
-				s = dem.parseQualifiedName();
-				if (!s) goto Lnot;
-				result ~= " . " ~ dem.parseType(s);
+				t = dem.parseQualifiedName();
+				if (!t) goto Lnot;
+				result ~= " . " ~ dem.parseType(t);
 			}
 
 			if (dem.ni != dem.name.length)
@@ -681,7 +683,6 @@ string demangle(string name)
 	//	catch (MangleException e)
 	//	{
 	//	}
-
 	}
 
 Lnot:
@@ -770,13 +771,8 @@ version(unittest)
 	{
 		template staticCheck1(int n)
 		{
-			pragma(msg, "[", n, "] ");
-			pragma(msg, "    ", table[n][0]);
-			pragma(msg, "    ", table[n][1]);
-			pragma(msg, "    ", dem(table[n][0]));
-			//enum staticCheck1 = dem(table[n][0]) == table[n][1];
 			static assert(dem(table[n][0]) == table[n][1]);
-			enum staticCheck1 = true;
+			enum staticCheck1 = dem(table[n][0]) == table[n][1];
 		}
 		
 		enum result = 
@@ -798,7 +794,7 @@ unittest
 				~ name[1] ~ "'");
 	}
 
-	static assert(staticCheck!(symbols, demangle).result);
+	static assert(staticCheck!(symbols,			demangle).result);
 
 	static assert(staticCheck!(baseTypes,		demangleType).result);
 	static assert(staticCheck!(arrayTypes,		demangleType).result);
@@ -810,32 +806,6 @@ unittest
 version(unittest)
 {
 	void main(){
-		void printReal(real r){
-			union Data{
-				ubyte[real.sizeof] data;	//caution!! LittleEndian in x86
-				real val;
-			}
-			Data d;
-			d.val = r;
-			writefln("%2X : %s -> %s", d.data.reverse, r, format(r)); }
-		
-		printReal(0);
-		printReal(+cast(real)0);
-		printReal(-cast(real)0);
-		printReal(+real.infinity);
-		printReal(-real.infinity);
-		printReal(real.nan);
-		printReal(-real.nan);
-		
-		void printFormatReal(real r)
-		{
-			writefln("%s / %s", Demangle.formatReal(r), format(r));
-		}
-		
-		printFormatReal(1);
-		printFormatReal(4.2);
-		printFormatReal(128);
-		printFormatReal(1024.234);
 	}
 }
 
