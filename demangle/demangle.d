@@ -767,6 +767,16 @@ version(unittest)
 		[ (shared(const(int)))	.mangleof,	"shared(const(int))"	],
 	];
 
+	class C{}
+	struct S{}
+	enum E{A}
+	static const aggregates =
+	[
+		[ C	.mangleof,	"class demangle.C"			],
+		[ S	.mangleof,	"struct demangle.S"			],
+		[ E	.mangleof,	"enum demangle.E"			]
+	];
+
 	template staticCheck(alias table, alias dem)
 	{
 		template staticCheck1(int n)
@@ -780,19 +790,22 @@ version(unittest)
 				staticCheck1,
 				staticIota!(0, table.length)));
 	}
+	bool runtimeCheck(string[2][] table, string function(string) dem)
+	{
+		foreach (i, name; table)
+		{
+			string r = dem(name[0]);
+			assert(r == name[1],
+					"table entry #" ~ to!string(i) ~ ": '" ~ name[0]
+					~ "' demangles as '" ~ r ~ "' but is expected to be '"
+					~ name[1] ~ "'");
+		}
+		return true;
+	}
 }
 unittest
 {
 	debug(demangle) printf("demangle.demangle.unittest\n");
-
-	foreach (i, name; symbols)
-	{
-		string r = demangle(name[0]);
-		assert(r == name[1],
-				"table entry #" ~ to!string(i) ~ ": '" ~ name[0]
-				~ "' demangles as '" ~ r ~ "' but is expected to be '"
-				~ name[1] ~ "'");
-	}
 
 	static assert(staticCheck!(symbols,			demangle).result);
 
@@ -801,6 +814,16 @@ unittest
 	static assert(staticCheck!(baseTypes,		demangleType).result);
 	static assert(staticCheck!(pointerTypes,	demangleType).result);
 	static assert(staticCheck!(modifiers,		demangleType).result);
+	static assert(staticCheck!(aggregates,		demangleType).result);
+
+	assert(runtimeCheck(symbols,		&demangle));
+
+	assert(runtimeCheck(baseTypes,		&demangleType));
+	assert(runtimeCheck(arrayTypes,		&demangleType));
+	assert(runtimeCheck(baseTypes,		&demangleType));
+	assert(runtimeCheck(pointerTypes,	&demangleType));
+	assert(runtimeCheck(modifiers,		&demangleType));
+	assert(runtimeCheck(aggregates,		&demangleType));
 }
 
 version(unittest)
