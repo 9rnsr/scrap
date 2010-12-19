@@ -38,6 +38,21 @@ private class MangleException : Exception
 	}
 }
 
+struct Optional(T)
+{
+	T _payload;
+	bool filled = false;
+	
+	this(T data)
+	{
+		_payload = data;
+		filled = true;
+	}
+	
+	alias _payload this;
+	bool opCast(T:bool)(){ return filled; }
+}
+
 /*****************************
  * Demangle D mangled names.
  *
@@ -69,7 +84,7 @@ int main()
         }
         else
         {   if (c == '_' || isalpha(c))
-            {        inword = true;
+            {   inword = true;
                 buffer.length = 0;
                 buffer ~= cast(char) c;
             }
@@ -84,29 +99,183 @@ int main()
 -------------------
  */
 
-string demangle(string name)
-{
-	size_t ni = 2;
-	string delegate() fparseTemplateInstanceName;
 
-	static void error()
+struct Demangle
+{
+	string name;
+	size_t ni;
+
+/+	static void error()
 	{
 		//writefln("error()");
-		throw new MangleException();
-	}
+		if (__ctfe)
+			assert(0);
+		else
+			throw new MangleException();
+	}+/
 
-	static ubyte ascii2hex(char c)
+	static Optional!ubyte ascii2hex(char c)
 	{
 		if (!isxdigit(c))
-			error();
-		return cast(ubyte)
+			return typeof(return)();//error();
+		return typeof(return)(
+			  cast(ubyte)
 			  ( (c >= 'a') ? c - 'a' + 10 :
 				(c >= 'A') ? c - 'A' + 10 :
 							 c - '0'
-			  );
+			  )
+			);
 	}
 
-	size_t parseNumber()
+	static string reverse(string s)
+	{
+		char[] result;
+		result.length = s.length;
+		foreach (i; 0..s.length)
+			result[$-1-i] = s[i];
+		return result.idup;
+	}
+
+	static string formatReal(real r)
+	{
+		if (r == +cast(real)0)
+			return "0";
+		else if (r == -cast(real)0)
+			return "-0";
+		else if (r == +real.infinity)
+			return "inf";
+		else if (r == -real.infinity)
+			return "-inf";
+		else if (r !<>= 0)
+			return "nan";
+		else
+		{
+			string result;
+			int sign = 1;
+			if (r < 0) sign = -1, r *= -1;
+			
+			{	ulong n = cast(ulong)r;
+				ulong i = 1;
+				while (n > 0)
+				{
+					ubyte mod = cast(ubyte)((n / i) % 10);
+					result ~= cast(char)(mod + '0');
+					n -= i * mod;
+					r -= i * mod;
+					i *= 10;
+				}
+				result = reverse(result);
+			}
+			
+			int dig = result.length;
+			if (r > 0 && real.dig > dig)
+			{
+				dig = real.dig - result.length;
+				real lim = 5.L * 10.L^^(-(dig+1));
+				
+				if (r >= lim)
+				{
+					result ~= ".";
+					real i = 0.1;
+					while (r > lim)
+					{
+						ubyte mod = cast(ubyte)((r / i) % 10);
+						result ~= cast(char)(mod + '0');
+						r -= i * mod;
+						i /= 10;
+					}
+				}
+			}
+			return result;
+		}
+	}
+
+	static real bytes2real(ubyte[real.sizeof] data)
+	{
+		static real pow2(int signed_n)
+		{
+			uint n = signed_n < 0 ? -signed_n : signed_n;
+			real result = (n&1) ? 2.0L : 1.0L;
+			for (uint shift=1; n; ++shift,n>>=1)
+				if (n&1)
+					result *= 1<<shift;
+			if (signed_n < 0)
+				result = 1.0L / result;
+			return result;
+		}
+		static assert(pow2(2) == 4);
+		static assert(pow2(0) == 1);
+		static assert(pow2(-2) == 0.25);
+		
+		
+		enum uint mant_dig = real.mant_dig;
+		enum uint expo_dig = real.sizeof*8 - mant_dig - 1;
+		static assert(mant_dig == 64);
+		static assert(expo_dig == 15);
+		enum int  expo_bias = cast(int)0x3FFF;
+		//enum real mant_bias = 2 ^^ cast(real)(mant_dig-1);
+		enum real mant_bias = pow2(mant_dig-1);
+		version(LittleEndian){}else static assert(0);
+		
+		auto  sign = data[9] & 0x80 ? -1 : 1;
+		uint  expo = ((cast(uint)data[9]&0x7F)<<8) + cast(uint)data[8];
+		ulong mant = (  (cast(ulong)data[7] << 56)
+					  + (cast(ulong)data[6] << 48)
+					  + (cast(ulong)data[5] << 40)
+					  + (cast(ulong)data[4] << 32)
+					  + (cast(ulong)data[3] << 24)
+					  + (cast(ulong)data[2] << 16)
+					  + (cast(ulong)data[1] <<  8)
+					  + (cast(ulong)data[0] <<  0) );
+	//	writefln("byte2real data = %x", data);
+	//	writefln("byte2real mant = %x", mant);
+	//	writefln("byte2real expo = %x", expo);
+		if (expo == 0x7FFF)
+			if (mant != 0)
+				return real.nan;
+			else
+				return sign * real.infinity;
+		else if (expo == 0 && mant == 0)
+			return sign * (cast(real)0);
+		else
+		{
+			int  expo_s = cast(int )expo - expo_bias;
+			real mant_u = cast(real)mant / mant_bias;
+	//		writefln("r = %s * %s * 2^%s", sign, mant_u, expo_s);
+			//auto r = sign * mant_u * 2^^cast(real)expo_s;
+			auto r = sign * mant_u * pow2(expo_s);
+	//		writefln("r = %s", r);
+			return r;
+		}
+	}
+
+	Optional!string getReal()
+	{
+		ubyte[real.sizeof] data;
+		
+		if (ni + 10 * 2 > name.length)
+			return typeof(return)();//error();
+		for (size_t i = 0; i < 10; i++)
+		{	ubyte b;
+
+			auto hex1 = ascii2hex(name[ni + i * 2    ]);
+			auto hex2 = ascii2hex(name[ni + i * 2 + 1]);
+			if (!hex1 || !hex2) return typeof(return)();
+			b = cast(ubyte)((hex1 << 4) + hex2);
+			data[i] = b;
+		}
+		ni += 10 * 2;
+		if (__ctfe)
+		{
+	//		writefln("data = %s", data);
+		//	return typeof(return)(format(bytes2real(data)));
+			return typeof(return)(formatReal(bytes2real(data)));
+		}
+		else
+			return typeof(return)(format(*cast(real*)&data[0]));
+	}
+
+	Optional!size_t parseNumber()
 	{
 		//writefln("parseNumber() %d", ni);
 		size_t result;
@@ -114,19 +283,21 @@ string demangle(string name)
 		while (ni < name.length && isdigit(name[ni]))
 		{	int i = name[ni] - '0';
 			if (result > (size_t.max - i) / 10)
-				error();
+				return typeof(return)();//error();
 			result = result * 10 + i;
 			ni++;
 		}
-		return result;
+		return typeof(return)(result);
 	}
 
-	string parseSymbolName()
+	Optional!string parseSymbolName()
 	{
 		//writefln("parseSymbolName() %d", ni);
-		size_t i = parseNumber();
+		//size_t i = parseNumber();
+		auto i = parseNumber();
+		if (!i) return typeof(return)();
 		if (ni + i > name.length)
-			error();
+			return typeof(return)();//error();
 		string result;
 		if (i >= 5 &&
 			name[ni] == '_' &&
@@ -136,16 +307,16 @@ string demangle(string name)
 			size_t nisave = ni;
 			bool err;
 			ni += 3;
-			try
-			{
-				result = fparseTemplateInstanceName();
+		//	try
+		//	{
+				result = parseTemplateInstanceName();
 				if (ni != nisave + i)
 					err = true;
-			}
-			catch (MangleException me)
-			{
-				err = true;
-			}
+		//	}
+		//	catch (MangleException me)
+		//	{
+		//		err = true;
+		//	}
 			ni = nisave;
 			if (err)
 				goto L1;
@@ -155,10 +326,10 @@ string demangle(string name)
 		result = name[ni .. ni + i];
 	  L2:
 		ni += i;
-		return result;
+		return typeof(return)(result);
 	}
 
-	string parseQualifiedName()
+	Optional!string parseQualifiedName()
 	{
 		//writefln("parseQualifiedName() %d", ni);
 		string result;
@@ -167,19 +338,21 @@ string demangle(string name)
 		{
 			if (result.length)
 				result ~= ".";
-			result ~= parseSymbolName();
+			auto s = parseSymbolName();
+			if (!s) return typeof(return)();
+			result ~= s;
 		}
-		return result;
+		return typeof(return)(result);
 	}
 
-	string parseType(string identifier = null)
+	Optional!string parseType(string identifier = null)
 	{
 		//writefln("parseType() %d", ni);
 		int isdelegate = 0;
 		bool hasthisptr = false; /// For function/delegate types: expects a 'this' pointer as last argument
 	  Lagain:
 		if (ni >= name.length)
-			error();
+			return typeof(return)();//error();
 		string p;
 		switch (name[ni++])
 		{
@@ -215,8 +388,8 @@ string demangle(string name)
 				goto L1;
 
 			case 'G':								 // static array
-			{		 size_t ns = ni;
-				parseNumber();
+			{	size_t ns = ni;
+				if (!parseNumber()) return typeof(return)();
 				size_t ne = ni;
 				p = parseType() ~ "[" ~ name[ns .. ne] ~ "]";
 				goto L1;
@@ -252,19 +425,19 @@ string demangle(string name)
 			case 'W':								 // Windows function
 			case 'V':								 // Pascal function
 			case 'R':								 // C++ function
-			{		 char mc = name[ni - 1];
+			{	char mc = name[ni - 1];
 				string args;
 
 				while (1)
 				{
 					if (ni >= name.length)
-						error();
+						return typeof(return)();//error();
 					char c = name[ni];
 					if (c == 'Z')
 						break;
 					if (c == 'X')
 					{
-						if (!args.length) error();
+						if (!args.length) return typeof(return)();//error();
 						args ~= " ...";
 						break;
 					}
@@ -309,7 +482,7 @@ string demangle(string name)
 						default:  assert(0);
 					}
 					p ~= parseType() ~ " " ~ identifier ~ "(" ~ args ~ ")";
-					return p;
+					return typeof(return)(p);
 				}
 				p = parseType() ~
 					(isdelegate ? " delegate(" : " function(") ~
@@ -329,10 +502,10 @@ string demangle(string name)
 
 			L1:
 				if (isdelegate)
-					error();				// 'D' must be followed by function
+					return typeof(return)();//error();				// 'D' must be followed by function
 				if (identifier.length)
 					p ~= " " ~ identifier;
-				return p;
+				return typeof(return)(p);
 
 			default:
 				size_t i = ni - 1;
@@ -342,16 +515,18 @@ string demangle(string name)
 		}
 	}
 
-	string parseTemplateInstanceName()
+	Optional!string parseTemplateInstanceName()
 	{
-		auto result = parseSymbolName() ~ "!(";
+		auto s = parseSymbolName();
+		if (!s) return typeof(return)();
+		auto result = s ~ "!(";
 		int nargs;
 
 		while (1)
 		{	size_t i;
 
 			if (ni >= name.length)
-				error();
+				return typeof(return)();//error();
 			if (nargs && name[ni] != 'Z')
 				result ~= ", ";
 			nargs++;
@@ -362,33 +537,12 @@ string demangle(string name)
 					continue;
 
 				case 'V':
-
-					void getReal()
-					{	real r;
-						ubyte *p = cast(ubyte *)&r;
-
-						if (ni + 10 * 2 > name.length)
-							error();
-						for (i = 0; i < 10; i++)
-						{	ubyte b;
-
-							b = cast(ubyte)
-								(
-								 (ascii2hex(name[ni + i * 2]) << 4) +
-								  ascii2hex(name[ni + i * 2 + 1])
-								);
-							p[i] = b;
-						}
-						result ~= format(r);
-						ni += 10 * 2;
-					}
-
 					result ~= parseType() ~ " ";
 					if (ni >= name.length)
-						error();
+						return typeof(return)();//error();
 					switch (name[ni++])
 					{
-					case '0': .. case '9':
+						case '0': .. case '9':
 							i = ni - 1;
 							while (ni < name.length && isdigit(name[ni]))
 								ni++;
@@ -400,7 +554,7 @@ string demangle(string name)
 							while (ni < name.length && isdigit(name[ni]))
 								ni++;
 							if (i == ni)
-								error();
+								return typeof(return)();//error();
 							result ~= "-" ~ name[i .. ni];
 							break;
 
@@ -409,13 +563,19 @@ string demangle(string name)
 							break;
 
 						case 'e':
-							getReal();
+							auto str = getReal();
+							if (!str) return typeof(return)();
+							result ~= str;
 							break;
 
 						case 'c':
-							getReal();
+							auto str = getReal();
+							if (!str) return typeof(return)();
+							result ~= str;
 							result ~= '+';
-							getReal();
+							str = getReal();
+							if (!str) return typeof(return)();
+							result ~= str;
 							result ~= 'i';
 							break;
 
@@ -426,16 +586,17 @@ string demangle(string name)
 							if (m == 'a')
 								m = 'c';
 							size_t n = parseNumber();
+							if (!n) return typeof(return)();
 							if (ni >= name.length || name[ni++] != '_' ||
 								ni + n * 2 > name.length)
-								error();
+								return typeof(return)();//error();
 							result ~= '"';
 							for (i = 0; i < n; i++)
 							{
-								auto c = cast(char)
-									((ascii2hex(name[ni + i * 2]) << 4) +
-											ascii2hex(name[ni + i * 2 + 1]));
-								result ~= cast(char)c;
+								auto hex1 = ascii2hex(name[ni + i * 2    ]);
+								auto hex2 = ascii2hex(name[ni + i * 2 + 1]);
+								if (!hex1 || !hex2) return typeof(return)();
+								result ~= cast(char)((hex1 << 4) + hex2);
 							}
 							ni += n * 2;
 							result ~= '"';
@@ -444,51 +605,62 @@ string demangle(string name)
 						}
 
 						default:
-							error();
+							return typeof(return)();//error();
 							break;
 					}
 					continue;
 
 				case 'S':
-					result ~= parseSymbolName();
+					auto sn = parseSymbolName();
+					if (!sn) return typeof(return)();
+					result ~= sn;
 					continue;
 
 				case 'Z':
 					break;
 
 				default:
-					error();
+					return typeof(return)();//error();
 			}
 			break;
 		}
 		result ~= ")";
-		return assumeUnique(result);
+		return typeof(return)(assumeUnique(result));
 	}
+}
 
-	if (name.length < 3 ||
-		name[0] != '_' ||
-		name[1] != 'D' ||
-		!isdigit(name[2]))
+string demangle(string name)
+{
+	if (name.length >= 3 &&
+		name[0] == '_' &&
+		name[1] == 'D' &&
+		isdigit(name[2]))
 	{
-		goto Lnot;
-	}
+		auto dem = Demangle(name, 2);
+		
+	//	try
+	//	{
+			string result;
+			auto s = dem.parseQualifiedName();
+			if (!s) goto Lnot;
+			result = s;
+			s = dem.parseType(result);
+			if (!s) goto Lnot;
+			result = s;
+			while(dem.ni < dem.name.length){
+				s = dem.parseQualifiedName();
+				if (!s) goto Lnot;
+				result ~= " . " ~ dem.parseType(s);
+			}
 
-	fparseTemplateInstanceName = &parseTemplateInstanceName;
+			if (dem.ni != dem.name.length)
+				goto Lnot;
+			return result;
+	//	}
+	//	catch (MangleException e)
+	//	{
+	//	}
 
-	try
-	{
-		auto result = parseQualifiedName();
-		result = parseType(result);
-		while(ni < name.length){
-				result ~= " . " ~ parseType(parseQualifiedName());
-		}
-
-		if (ni != name.length)
-			goto Lnot;
-		return result;
-	}
-	catch (MangleException e)
-	{
 	}
 
 Lnot:
@@ -536,6 +708,9 @@ unittest
 }
 template staticCheck(int n)
 {
+	pragma(msg, "[", n, "] ", table[n][0]);
+	pragma(msg, "    ", table[n][1]);
+	pragma(msg, "    ", demangle(table[n][0]));
 	enum staticCheck = demangle(table[n][0]) == table[n][1];
 }
 unittest
@@ -545,6 +720,33 @@ unittest
 
 version(unittest)
 {
-	void main(){}
+	void main(){
+		void printReal(real r){
+			union Data{
+				ubyte[real.sizeof] data;	//caution!! LittleEndian in x86
+				real val;
+			}
+			Data d;
+			d.val = r;
+			writefln("%2X : %s -> %s", d.data.reverse, r, format(r)); }
+		
+		printReal(0);
+		printReal(+cast(real)0);
+		printReal(-cast(real)0);
+		printReal(+real.infinity);
+		printReal(-real.infinity);
+		printReal(real.nan);
+		printReal(-real.nan);
+		
+		void printFormatReal(real r)
+		{
+			writefln("%s / %s", Demangle.formatReal(r), format(r));
+		}
+		
+		printFormatReal(1);
+		printFormatReal(4.2);
+		printFormatReal(128);
+		printFormatReal(1024.234);
+	}
 }
 
