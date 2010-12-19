@@ -137,63 +137,62 @@ struct Demangle
 		return result.idup;
 	}
 
-	static string formatReal(real r)
+	static string fmtInt(ulong n)
 	{
-		if (r == +cast(real)0)
+		string s;
+		ulong i = 1;
+		while (n > 0)
+		{
+			ubyte mod = cast(ubyte)((n / i) % 10);
+			s ~= cast(char)(mod + '0');
+			n -= i * mod;
+			i *= 10;
+		}
+		return reverse(s);
+	}
+	
+	static string formatReal(real e)
+	{
+		if (e == +cast(real)0)
 			return "0";
-		else if (r == -cast(real)0)
+		else if (e == -cast(real)0)
 			return "-0";
-		else if (r == +real.infinity)
+		else if (e == +real.infinity)
 			return "inf";
-		else if (r == -real.infinity)
+		else if (e == -real.infinity)
 			return "-inf";
-		else if (r !<>= 0)
+		else if (e !<>= 0)
 			return "nan";
 		else
 		{
-			string fmtN()
-			{
-				string s;
-				ulong n = cast(ulong)r;
-				ulong i = 1;
-				while (n > 0)
-				{
-					ubyte mod = cast(ubyte)((n / i) % 10);
-					s ~= cast(char)(mod + '0');
-					n -= i * mod;
-					r -= i * mod;
-					i *= 10;
-				}
-				return reverse(s);
-			}
-			string fmtF(int dig_n)
-			{
-				if (r == 0) return "";
-				if (dig_n == 0) return "";
-				
-				int  dig_f = real.dig - dig_n;
-				real lim = 5.L * 10.L^^(-(dig_f+1));
-				if (r < lim) return "";
-				
-				string s = ".";
-				real i = 0.1;
-				while (r > lim)
-				{
-					ubyte mod = cast(ubyte)((r / i) % 10);
-					s ~= cast(char)(mod + '0');
-					r -= i * mod;
-					i /= 10;
-				}
-				return s;
-			}
+			string sign = e < 0 ? "-" : "";
+			if (e < 0) e *= -1;
 			
-			string sign = r < 0 ? "-" : "";
-			if (r < 0) r *= -1;
-			string nstr = fmtN();
-			string fstr = fmtF(real.dig > nstr.length ? real.dig - nstr.length : 0);
+			string nstr = fmtInt(cast(ulong)e);
+			e -= cast(ulong)e;
 			
+			string fstr;
+			if (e == 0) goto Lend;
+			int dig = real.dig - nstr.length;
+			if (dig <= 0) goto Lend;
+			
+			auto nf = cast(ulong)(e * 10.0L^^(dig+1));
+			fstr = "." ~ fmtInt(cast(ulong)(nf + (nf % 10 >= 5 ? 10 : 0) / 10));
+			auto len = fstr.length;
+			while (fstr[len-1] == '0') --len;
+			fstr = fstr[0..len];
+			
+		  Lend:
 			return sign ~ nstr ~ fstr;
 		}
+	}
+	unittest
+	{
+		static assert(Demangle.formatReal(1)		== "1");
+		static assert(Demangle.formatReal(4.2)		== "4.2");
+		static assert(Demangle.formatReal(128)		== "128");
+		static assert(Demangle.formatReal(1024.123)	== "1024.123");
+		static assert(Demangle.formatReal(-1.4142)	== "-1.4142");
 	}
 
 	static real bytes2real(ubyte[real.sizeof] data)
@@ -293,6 +292,7 @@ struct Demangle
 			result = result * 10 + i;
 			ni++;
 		}
+		//if (ni==48)assert(0, name[ni..$]);
 		return typeof(return)(result);
 	}
 
@@ -300,8 +300,10 @@ struct Demangle
 	{
 		//writefln("parseSymbolName() %d", ni);
 		//size_t i = parseNumber();
-		auto i = parseNumber();
-		if (!i) mixin(error);
+		auto iopt = parseNumber();
+		if (!iopt) mixin(error);
+		auto i = iopt._payload;	// workaround for CTFE
+		//if(ni>5)assert(0, ""~fmtInt(i)~"/"~fmtInt(ni)~"/"~fmtInt(name.length));
 		if (ni + i > name.length)
 			mixin(error);
 		string result;
@@ -316,6 +318,8 @@ struct Demangle
 		//	try
 		//	{
 				result = parseTemplateInstanceName();
+				//i==58, nisave=9, 
+				//assert(0, ""~fmtInt(i)~"/"~fmtInt(nisave)~"/"~fmtInt(ni)~"/"~result);
 				if (ni != nisave + i)
 					err = true;
 		//	}
@@ -324,6 +328,7 @@ struct Demangle
 		//		err = true;
 		//	}
 			ni = nisave;
+			//assert(0, ""~fmtInt(err)~"/"~name[ni..$]);
 			if (err)
 				goto L1;
 			goto L2;
@@ -345,6 +350,7 @@ struct Demangle
 			if (result.length)
 				result ~= ".";
 			auto s = parseSymbolName();
+			//if (ni>50)assert(0, s ~ " / " ~ name[ni .. $]);
 			if (!s) mixin(error);
 			result ~= s;
 		}
@@ -395,9 +401,13 @@ struct Demangle
 
 			case 'G':								 // static array
 			{	size_t ns = ni;
-				if (!parseNumber()) mixin(error);
+				auto n = parseNumber();		// workaround for CTFE(auto n == ...)
+//				assert(0, name[ni..$]);
+				if (!n) mixin(error);
+//				assert(0, name[ni..$]);
 				size_t ne = ni;
 				p = parseType() ~ "[" ~ name[ns .. ne] ~ "]";
+//				assert(0, p);
 				goto L1;
 			}
 
@@ -649,6 +659,7 @@ string demangle(string name)
 			string result;
 			auto s = dem.parseQualifiedName();
 			if (!s) goto Lnot;
+			//assert(0, s);
 			result = s;
 			s = dem.parseType(result);
 			if (!s) goto Lnot;
@@ -694,8 +705,8 @@ version(unittest)
 		[ "_D8demangle8demangleFAaZAa", "char[] demangle.demangle(char[])" ],
 		[ "_D6object6Object8opEqualsFC6ObjectZi", "int object.Object.opEquals(class Object)" ],
 		[ "_D4test2dgDFiYd", "double delegate(int, ...) test.dg" ],
-		[ "_D4test58__T9factorialVde67666666666666860140VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, char[5] \"hello\"c, void* null).factorial" ],
-		[ "_D4test101__T9factorialVde67666666666666860140Vrc9a999999999999d9014000000000000000c00040VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, cdouble 6.8+3i, char[5] \"hello\"c, void* null).factorial" ],
+/**/	[ "_D4test58__T9factorialVde67666666666666860140VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, char[5] \"hello\"c, void* null).factorial" ],
+/**/	[ "_D4test101__T9factorialVde67666666666666860140Vrc9a999999999999d9014000000000000000c00040VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, cdouble 6.8+3i, char[5] \"hello\"c, void* null).factorial" ],
 		[ "_D4test34__T3barVG3uw3_616263VG3wd3_646566Z1xi", "int test.bar!(wchar[3] \"abc\"w, dchar[3] \"def\"d).x" ],
 		[ "_D8demangle4testFLC6ObjectLDFLiZiZi", "int demangle.test(lazy class Object, lazy int delegate(lazy int))"],
 		[ "_D8demangle4testFAiXi", "int demangle.test(int[] ...)"],
@@ -755,10 +766,13 @@ version(unittest)
 	{
 		template staticCheck1(int n)
 		{
-			pragma(msg, "[", n, "] ", table[n][0]);
-	//		pragma(msg, "    ", table[n][1]);
-	//		pragma(msg, "    ", dem(table[n][0]));
-			enum staticCheck1 = dem(table[n][0]) == table[n][1];
+			pragma(msg, "[", n, "] ");
+			pragma(msg, "    ", table[n][0]);
+			pragma(msg, "    ", table[n][1]);
+			pragma(msg, "    ", dem(table[n][0]));
+			//enum staticCheck1 = dem(table[n][0]) == table[n][1];
+			static assert(dem(table[n][0]) == table[n][1]);
+			enum staticCheck1 = true;
 		}
 		
 		enum result = 
@@ -780,7 +794,7 @@ unittest
 				~ name[1] ~ "'");
 	}
 
-//	static assert(staticCheck!(symbols, demangle).result);
+	static assert(staticCheck!(symbols, demangle).result);
 
 	static assert(staticCheck!(baseTypes,		demangleType).result);
 	static assert(staticCheck!(arrayTypes,		demangleType).result);
@@ -818,12 +832,6 @@ version(unittest)
 		printFormatReal(4.2);
 		printFormatReal(128);
 		printFormatReal(1024.234);
-		
-		pragma(msg, Demangle.formatReal(1));
-		pragma(msg, Demangle.formatReal(4.2));
-		pragma(msg, Demangle.formatReal(128));
-		pragma(msg, Demangle.formatReal(1024.123));
-		//static assert(Demangle.formatReal(4.2) == "4.2");
 	}
 }
 
