@@ -834,9 +834,47 @@ unittest
 	assert(runtimeCheck(aggregates,		&demangleType));
 }
 
+
+/**
+ *	Demangle type or symbol.
+ *	@@BUG@@ Symbol version does not work correctly.
+ */
+template demangleOf(T)
+{
+	enum demangleOf = demangleType(T.mangleof);
+}
+/// ditto
+template demangleOf(alias A)
+{
+	pragma(msg, "demangleOf!alias");
+	static if (is(typeof(A)))
+		static if (__traits(compiles, { auto v = A; }))
+			enum demangleOf = demangle(A.mangleof);
+		else
+			enum demangleOf = demangleType(A.mangleof);	// A is template
+	else static if (is(A))
+		enum demangleOf = demangleType(A.mangleof);
+}
+
+version(unittest)
+{
+	int global;
+	void f(){}
+	template Template(T){void f(){}}
+}
+unittest
+{
+//	f();				// instantiation?
+//	Template!int.f();	// instantiation
+
+//	static assert(demangleOf!global == "_D8demangle6globali");
+//	static assert(demangleOf!f == "_D8demangle1fFZv");
+//	static assert(demangleOf!(Template!int) == "__T8TemplateTiZ");	//?
+	static assert(demangleOf!int == "int");
+}
+
 version(unittest)
 {
 	void main(){
 	}
 }
-
