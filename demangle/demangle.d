@@ -19,16 +19,19 @@
  */
 module demangle;
 
-//debug=demangle;                // uncomment to turn on debugging printf's
+private import core.demangle;
+private import std.exception;
 
 private import std.ctype;
 private import std.string;
-import std.conv;
-private import std.utf;
-import std.exception;
+private import std.traits;
 
-private import std.typetuple;
-private import std.stdio;
+version(unittest)
+{
+	private import std.conv;
+	private import std.stdio;
+	private import std.typetuple;
+}
 
 private class MangleException : Exception
 {
@@ -36,29 +39,6 @@ private class MangleException : Exception
 	{
 		super("MangleException");
 	}
-}
-
-struct Optional(T)
-{
-private:
-	T _payload;
-	bool filled = false;
-
-public:
-	this(T data)
-	{
-		_payload = data;
-		filled = true;
-	}
-	
-	ref T _get()
-	{
-		assert(filled);
-		return _payload;
-	}
-	alias _get this;
-	
-	bool opCast(T:bool)(){ return filled; }
 }
 
 /*****************************
@@ -107,7 +87,243 @@ int main()
 -------------------
  */
 
+string demangle(string name)
+{
+	if (__ctfe)
+	{
+		if (name.length >= 3 &&
+			name[0] == '_' &&
+			name[1] == 'D' &&
+			isdigit(name[2]))
+		{
+			auto dem = Demangle(name, 2);
+			
+		//	try
+		//	{
+				string result;
+				auto t = dem.parseQualifiedName();
+				if (!t) goto Lnot;
+				result = t;
+				t = dem.parseType(result);
+				if (!t) goto Lnot;
+				result = t;
+				while(dem.ni < dem.name.length){
+					t = dem.parseQualifiedName();
+					if (!t) goto Lnot;
+					result ~= " . " ~ dem.parseType(t);
+				}
+	
+				if (dem.ni != dem.name.length)
+					goto Lnot;
+				return result;
+		//	}
+		//	catch (MangleException e)
+		//	{
+		//	}
+		}
+	
+	Lnot:
+		// Not a recognized D mangled name; so return original
+		return name;
+	}
+	else
+	{
+	    auto ret = core.demangle.demangle(name);
+	    return assumeUnique(ret);
+	}
+}
 
+// [implementation of demangleOf]
+string demangleType(string name)
+{
+	auto dem = Demangle(name, 0);
+	auto s = dem.parseType();
+	if (!s) return name;
+	return s;
+}
+
+// [implementation of demangleOf]
+string demangleName(string name)
+{
+	auto dem = Demangle(name, 0);
+	
+	string result;
+	auto t = dem.parseQualifiedName();
+	if (!t) goto Lnot;
+	result = t;
+
+	if (dem.ni != dem.name.length)
+		goto Lnot;
+	return result;
+
+Lnot:
+	// Not a recognized D mangled name; so return original
+	return name;
+}
+
+version(unittest)
+{
+	static const symbols =
+	[
+		[ "printf", 	 "printf" ],
+		[ "_foo",		 "_foo" ],
+		[ "_D88",		 "_D88" ],
+		[ "_D4test3fooAa", "char[] test.foo" ],
+		[ "_D8demangle8demangleFAaZAa", "char[] demangle.demangle(char[])" ],
+		[ "_D6object6Object8opEqualsFC6ObjectZi", "int object.Object.opEquals(class Object)" ],
+		[ "_D4test2dgDFiYd", "double delegate(int, ...) test.dg" ],
+		[ "_D4test58__T9factorialVde67666666666666860140VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, char[5] \"hello\"c, void* null).factorial" ],
+		[ "_D4test101__T9factorialVde67666666666666860140Vrc9a999999999999d9014000000000000000c00040VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, cdouble 6.8+3i, char[5] \"hello\"c, void* null).factorial" ],
+		[ "_D4test34__T3barVG3uw3_616263VG3wd3_646566Z1xi", "int test.bar!(wchar[3] \"abc\"w, dchar[3] \"def\"d).x" ],
+		[ "_D8demangle4testFLC6ObjectLDFLiZiZi", "int demangle.test(lazy class Object, lazy int delegate(lazy int))" ],
+		[ "_D8demangle4testFAiXi", "int demangle.test(int[] ...)" ],
+		[ "_D8demangle4testFLAiXi", "int demangle.test(lazy int[] ...)" ],
+		[ "_D6plugin8generateFiiZAya", "immutable(char)[] plugin.generate(int, int)" ],
+		[ "_D6plugin8generateFiiZAxa", "const(char)[] plugin.generate(int, int)" ],
+		[ "_D6plugin8generateFiiZAOa", "shared(char)[] plugin.generate(int, int)" ]
+	];
+	static const baseTypes =
+	[
+		[ void		.mangleof,	"void"		],
+		[ bool		.mangleof,	"bool"		],
+		[ byte		.mangleof,	"byte"		],
+		[ ubyte		.mangleof,	"ubyte"		],
+		[ short		.mangleof,	"short"		],
+		[ ushort	.mangleof,	"ushort"	],
+		[ int		.mangleof,	"int"		],
+		[ uint		.mangleof,	"uint"		],
+		[ long		.mangleof,	"long"		],
+		[ ulong		.mangleof,	"ulong"		],
+	//	[ cent		.mangleof,	"cent"		],
+	//	[ ucent		.mangleof,	"ucent"		],
+		[ float		.mangleof,	"float"		],
+		[ double	.mangleof,	"double"	],
+		[ real		.mangleof,	"real"		],
+		[ ifloat	.mangleof,	"ifloat"	],
+		[ idouble	.mangleof,	"idouble"	],
+		[ ireal		.mangleof,	"ireal"		],
+		[ cfloat	.mangleof,	"cfloat"	],
+		[ cdouble	.mangleof,	"cdouble"	],
+		[ creal		.mangleof,	"creal"		],
+		[ char		.mangleof,	"char"		],
+		[ wchar		.mangleof,	"wchar"		],
+		[ dchar		.mangleof,	"dchar"		]
+	];
+	static const arrayTypes =
+	[
+		[ (int[])			.mangleof,	"int[]"			],
+		[ (int[][])			.mangleof,	"int[][]"		]
+	//	[ (int[string])		.mangleof,	"int[string]"	],	object.AssociativeArray!(immutable(char), int).AssociativeArray
+		
+	];
+	static const pointerTypes =
+	[
+		[ (int*)			.mangleof,	"int*"		],
+		[ (int**)			.mangleof,	"int**"		]
+	];
+	static const modifiers =
+	[
+		[ (const(int))			.mangleof,	"const(int)"			],
+		[ (immutable(int))		.mangleof,	"immutable(int)"		],
+		[ (shared(int))			.mangleof,	"shared(int)"			],
+		[ (shared(const(int)))	.mangleof,	"shared(const(int))"	],
+	];
+
+	class C{}
+	struct S{}
+	enum E{A}
+	static const aggregates =
+	[
+		[ C	.mangleof,	"class demangle.C"			],
+		[ S	.mangleof,	"struct demangle.S"			],
+		[ E	.mangleof,	"enum demangle.E"			]
+	];
+
+	template staticCheck(alias table, alias dem)
+	{
+		template staticCheck1(int n)
+		{
+			static assert(dem(table[n][0]) == table[n][1]);
+			enum staticCheck1 = dem(table[n][0]) == table[n][1];
+		}
+		
+		enum result = 
+			allSatisfy!(staticMap!(
+				staticCheck1,
+				staticIota!(0, table.length)));
+	}
+//	bool runtimeCheck(string[2][] table, string function(string) dem)
+//	{
+//		foreach (i, name; table)
+//		{
+//			string r = dem(name[0]);
+//			assert(r == name[1],
+//					"table entry #" ~ to!string(i) ~ ": '" ~ name[0]
+//					~ "' demangles as '" ~ r ~ "' but is expected to be '"
+//					~ name[1] ~ "'");
+//		}
+//		return true;
+//	}
+}
+unittest
+{
+	debug(demangle) printf("demangle.demangle.unittest\n");
+
+	static assert(staticCheck!(symbols,			demangle).result);
+	static assert(staticCheck!(baseTypes,		demangleType).result);
+	static assert(staticCheck!(arrayTypes,		demangleType).result);
+	static assert(staticCheck!(baseTypes,		demangleType).result);
+	static assert(staticCheck!(pointerTypes,	demangleType).result);
+	static assert(staticCheck!(modifiers,		demangleType).result);
+	static assert(staticCheck!(aggregates,		demangleType).result);
+
+//	assert(runtimeCheck(symbols,		&demangle));
+//	assert(runtimeCheck(baseTypes,		&demangleType));
+//	assert(runtimeCheck(arrayTypes,		&demangleType));
+//	assert(runtimeCheck(baseTypes,		&demangleType));
+//	assert(runtimeCheck(pointerTypes,	&demangleType));
+//	assert(runtimeCheck(modifiers,		&demangleType));
+//	assert(runtimeCheck(aggregates,		&demangleType));
+}
+
+
+/**
+ *	Demangle type/symbol/template.
+ */
+template demangleOf(T)
+{
+	enum demangleOf = demangleType(T.mangleof);
+}
+/// ditto
+template demangleOf(alias A)
+{
+	//pragma(msg, "demangleOf!alias A == ", A, " / ", typeof(A));
+	static if (is(typeof(A)))
+		static if (__traits(compiles, { auto v = A; }))
+			enum demangleOf = demangle(mangledName!A);		// A is symbol
+		else static if (isSomeFunction!(A))
+			enum demangleOf = demangle(mangledName!A);		// A is function
+		else
+			enum demangleOf = demangleName(mangledName!A);	// A is template
+	else static if (is(A))
+			enum demangleOf = demangleType(A.mangleof);		// A is type
+}
+
+version(unittest)
+{
+	int global;
+	void f(){}
+	template Template(T){void f(){}}
+}
+unittest
+{
+	static assert(demangleOf!int == "int");
+	static assert(demangleOf!global == "int demangle.global");
+	static assert(demangleOf!f == "void demangle.f()");
+	static assert(demangleOf!(Template!int) == "demangle.Template!(int)");
+}
+
+// implementation of CTFE demangle
 struct Demangle
 {
 	string name;
@@ -276,7 +492,7 @@ struct Demangle
 
 	Optional!size_t parseNumber()
 	{
-		//writefln("parseNumber() %d", ni);
+		//debug if (!__ctfe) writefln("parseNumber() %d", ni);
 		size_t result;
 
 		while (ni < name.length && isdigit(name[ni]))
@@ -291,7 +507,7 @@ struct Demangle
 
 	Optional!string parseSymbolName()
 	{
-		//writefln("parseSymbolName() %d", ni);
+		//debug if (!__ctfe) writefln("parseSymbolName() %d", ni);
 		auto iopt = parseNumber();
 		if (!iopt) mixin(error);
 		size_t i = iopt;	// workaround for CTFE
@@ -332,7 +548,7 @@ struct Demangle
 
 	Optional!string parseQualifiedName()
 	{
-		//writefln("parseQualifiedName() %d", ni);
+		//debug if (!__ctfe) writefln("parseQualifiedName() %d", ni);
 		string result;
 
 		while (ni < name.length && isdigit(name[ni]))
@@ -341,6 +557,7 @@ struct Demangle
 				result ~= ".";
 			auto s = parseSymbolName();
 			if (!s) mixin(error);
+			//debug if (!__ctfe) writefln("parseQualifiedName() s = %s", s._payload);
 			result ~= s;
 		}
 		return typeof(return)(result);
@@ -348,7 +565,7 @@ struct Demangle
 
 	Optional!string parseType(string identifier = null)
 	{
-		//writefln("parseType() %d", ni);
+		//debug if (!__ctfe) writefln("parseType() %d", ni);
 		int isdelegate = 0;
 		bool hasthisptr = false; /// For function/delegate types: expects a 'this' pointer as last argument
 	  Lagain:
@@ -637,7 +854,7 @@ struct Demangle
 
 						default:
 							mixin(error);
-							break;
+							//break;
 					}
 					continue;
 
@@ -660,217 +877,27 @@ struct Demangle
 	}
 }
 
-string demangle(string name)
+struct Optional(T)
 {
-	if (name.length >= 3 &&
-		name[0] == '_' &&
-		name[1] == 'D' &&
-		isdigit(name[2]))
+private:
+	T _payload;
+	bool filled = false;
+
+public:
+	this(T data)
 	{
-		auto dem = Demangle(name, 2);
-		
-	//	try
-	//	{
-			string result;
-			auto t = dem.parseQualifiedName();
-			if (!t) goto Lnot;
-			result = t;
-			t = dem.parseType(result);
-			if (!t) goto Lnot;
-			result = t;
-			while(dem.ni < dem.name.length){
-				t = dem.parseQualifiedName();
-				if (!t) goto Lnot;
-				result ~= " . " ~ dem.parseType(t);
+		_payload = data;
+		filled = true;
 			}
 
-			if (dem.ni != dem.name.length)
-				goto Lnot;
-			return result;
-	//	}
-	//	catch (MangleException e)
-	//	{
-	//	}
-	}
-
-Lnot:
-	// Not a recognized D mangled name; so return original
-	return name;
-}
-
-
-string demangleType(string name)
-{
-	auto dem = Demangle(name, 0);
-	auto s = dem.parseType();
-	if (!s) return name;
-	return s;
-}
-
-version(unittest)
-{
-	static const symbols =
-	[
-		[ "printf", 	 "printf" ],
-		[ "_foo",		 "_foo" ],
-		[ "_D88",		 "_D88" ],
-		[ "_D4test3fooAa", "char[] test.foo"],
-		[ "_D8demangle8demangleFAaZAa", "char[] demangle.demangle(char[])" ],
-		[ "_D6object6Object8opEqualsFC6ObjectZi", "int object.Object.opEquals(class Object)" ],
-		[ "_D4test2dgDFiYd", "double delegate(int, ...) test.dg" ],
-		[ "_D4test58__T9factorialVde67666666666666860140VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, char[5] \"hello\"c, void* null).factorial" ],
-		[ "_D4test101__T9factorialVde67666666666666860140Vrc9a999999999999d9014000000000000000c00040VG5aa5_68656c6c6fVPvnZ9factorialf", "float test.factorial!(double 4.2, cdouble 6.8+3i, char[5] \"hello\"c, void* null).factorial" ],
-		[ "_D4test34__T3barVG3uw3_616263VG3wd3_646566Z1xi", "int test.bar!(wchar[3] \"abc\"w, dchar[3] \"def\"d).x" ],
-		[ "_D8demangle4testFLC6ObjectLDFLiZiZi", "int demangle.test(lazy class Object, lazy int delegate(lazy int))"],
-		[ "_D8demangle4testFAiXi", "int demangle.test(int[] ...)"],
-		[ "_D8demangle4testFLAiXi", "int demangle.test(lazy int[] ...)"],
-		[ "_D6plugin8generateFiiZAya", "immutable(char)[] plugin.generate(int, int)"],
-		[ "_D6plugin8generateFiiZAxa", "const(char)[] plugin.generate(int, int)"],
-		[ "_D6plugin8generateFiiZAOa", "shared(char)[] plugin.generate(int, int)"]
-	];
-	static const baseTypes =
-	[
-		[ void		.mangleof,	"void"		],
-		[ bool		.mangleof,	"bool"		],
-		[ byte		.mangleof,	"byte"		],
-		[ ubyte		.mangleof,	"ubyte"		],
-		[ short		.mangleof,	"short"		],
-		[ ushort	.mangleof,	"ushort"	],
-		[ int		.mangleof,	"int"		],
-		[ uint		.mangleof,	"uint"		],
-		[ long		.mangleof,	"long"		],
-		[ ulong		.mangleof,	"ulong"		],
-	//	[ cent		.mangleof,	"cent"		],
-	//	[ ucent		.mangleof,	"ucent"		],
-		[ float		.mangleof,	"float"		],
-		[ double	.mangleof,	"double"	],
-		[ real		.mangleof,	"real"		],
-		[ ifloat	.mangleof,	"ifloat"	],
-		[ idouble	.mangleof,	"idouble"	],
-		[ ireal		.mangleof,	"ireal"		],
-		[ cfloat	.mangleof,	"cfloat"	],
-		[ cdouble	.mangleof,	"cdouble"	],
-		[ creal		.mangleof,	"creal"		],
-		[ char		.mangleof,	"char"		],
-		[ wchar		.mangleof,	"wchar"		],
-		[ dchar		.mangleof,	"dchar"		]
-	];
-	static const arrayTypes =
-	[
-		[ (int[])			.mangleof,	"int[]"			],
-		[ (int[][])			.mangleof,	"int[][]"		]
-	//	[ (int[string])		.mangleof,	"int[string]"	],	object.AssociativeArray!(immutable(char), int).AssociativeArray
-		
-	];
-	static const pointerTypes =
-	[
-		[ (int*)			.mangleof,	"int*"		],
-		[ (int**)			.mangleof,	"int**"		]
-	];
-	static const modifiers =
-	[
-		[ (const(int))			.mangleof,	"const(int)"			],
-		[ (immutable(int))		.mangleof,	"immutable(int)"		],
-		[ (shared(int))			.mangleof,	"shared(int)"			],
-		[ (shared(const(int)))	.mangleof,	"shared(const(int))"	],
-	];
-
-	class C{}
-	struct S{}
-	enum E{A}
-	static const aggregates =
-	[
-		[ C	.mangleof,	"class demangle.C"			],
-		[ S	.mangleof,	"struct demangle.S"			],
-		[ E	.mangleof,	"enum demangle.E"			]
-	];
-
-	template staticCheck(alias table, alias dem)
+	ref T _get()
 	{
-		template staticCheck1(int n)
-		{
-			static assert(dem(table[n][0]) == table[n][1]);
-			enum staticCheck1 = dem(table[n][0]) == table[n][1];
-		}
-		
-		enum result = 
-			allSatisfy!(staticMap!(
-				staticCheck1,
-				staticIota!(0, table.length)));
+		assert(filled);
+		return _payload;
 	}
-	bool runtimeCheck(string[2][] table, string function(string) dem)
-	{
-		foreach (i, name; table)
-		{
-			string r = dem(name[0]);
-			assert(r == name[1],
-					"table entry #" ~ to!string(i) ~ ": '" ~ name[0]
-					~ "' demangles as '" ~ r ~ "' but is expected to be '"
-					~ name[1] ~ "'");
-		}
-		return true;
-	}
-}
-unittest
-{
-	debug(demangle) printf("demangle.demangle.unittest\n");
+	alias _get this;
 
-	static assert(staticCheck!(symbols,			demangle).result);
-
-	static assert(staticCheck!(baseTypes,		demangleType).result);
-	static assert(staticCheck!(arrayTypes,		demangleType).result);
-	static assert(staticCheck!(baseTypes,		demangleType).result);
-	static assert(staticCheck!(pointerTypes,	demangleType).result);
-	static assert(staticCheck!(modifiers,		demangleType).result);
-	static assert(staticCheck!(aggregates,		demangleType).result);
-
-	assert(runtimeCheck(symbols,		&demangle));
-
-	assert(runtimeCheck(baseTypes,		&demangleType));
-	assert(runtimeCheck(arrayTypes,		&demangleType));
-	assert(runtimeCheck(baseTypes,		&demangleType));
-	assert(runtimeCheck(pointerTypes,	&demangleType));
-	assert(runtimeCheck(modifiers,		&demangleType));
-	assert(runtimeCheck(aggregates,		&demangleType));
-}
-
-
-/**
- *	Demangle type or symbol.
- *	@@BUG@@ Symbol version does not work correctly.
- */
-template demangleOf(T)
-{
-	enum demangleOf = demangleType(T.mangleof);
-}
-/// ditto
-template demangleOf(alias A)
-{
-	pragma(msg, "demangleOf!alias");
-	static if (is(typeof(A)))
-		static if (__traits(compiles, { auto v = A; }))
-			enum demangleOf = demangle(A.mangleof);
-		else
-			enum demangleOf = demangleType(A.mangleof);	// A is template
-	else static if (is(A))
-		enum demangleOf = demangleType(A.mangleof);
-}
-
-version(unittest)
-{
-	int global;
-	void f(){}
-	template Template(T){void f(){}}
-}
-unittest
-{
-//	f();				// instantiation?
-//	Template!int.f();	// instantiation
-
-//	static assert(demangleOf!global == "_D8demangle6globali");
-//	static assert(demangleOf!f == "_D8demangle1fFZv");
-//	static assert(demangleOf!(Template!int) == "__T8TemplateTiZ");	//?
-	static assert(demangleOf!int == "int");
+	bool opCast(T:bool)(){ return filled; }
 }
 
 version(unittest)
