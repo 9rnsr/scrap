@@ -313,6 +313,10 @@ void main()
 		assert(us1.get == 20);
 		assert(us2.get == 10);
 	}
+	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		auto us = Unique!S(10);
+		S s = us;	// TODO: Breaking uniqueness
+	}
 }
 
 
