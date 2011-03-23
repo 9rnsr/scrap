@@ -6,31 +6,11 @@ import std.traits;
 
 debug = Uniq;
 
-/+template isRef(T)
-{
-	static if (is(T U == U*))
-		enum isRef = true;
-	else static if (is(U == class) || is(U == interface))
-		enum isRef = true;
-	else
-		enum isRef = false;
-}
-template isRef(alias V)
-{
-//	static if (is(V U))
-//		enum isRef = .isRef!U;
-//	else 
-	static if (__traits(isRef, V))
-		enum isRef = true;
-	else
-		enum isRef = .isRef!(typeof(V));
 
-}+/
-
-
+// for debug print
 bool isInitialState(T)(ref T obj)
 {
-	static if (is(T == class))
+	static if (is(T == class) || is(T == interface) || isDynamicArray!T || isPointer!T)
 		return obj is null;
 	else
 	{
@@ -66,10 +46,8 @@ u1 = T(...);					// Replace unique object. Old object is destroyed.
 u1 = T.init;					// Destroy unique object
 
 Unique!T u2 = T(...);			// Move construction
-T t = u.extract;				// Release unique object
-
-Unique!T u3 = T(...);
-T t = u3;						// TODO: Breaking uniqueness?
+//T t = u2;						// implicit conversion from Unique!T to T is disabled
+T t = u2.extract;				// Release unique object
 ----
 */
 struct Unique(T)
@@ -78,7 +56,7 @@ struct Unique(T)
 {
 private:
   static if (is(T == class))
-	ubyte[__traits(claasInstanceSize, T)] __payload;
+	ubyte[__traits(claasInstanceSize, T)] __payload;	// value semantics...mistake?
   else
   {
 	T __object;	// initialized with T.init by default-construction
@@ -86,18 +64,17 @@ private:
   }
 
 public:
-	/// In-place construction
+	/// In-place construction with args which constructor argumens of T
 	this(A...)(A args)
 		if (!is(A[0] == Unique) && !is(A[0] == T))
 	{
 		emplace!T(cast(void[])__payload[], args);
 		debug(Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
 	}
-	/// Move construction
+	/// Move construction with rvalue T
 	this(A...)(A args)
 		if (A.length == 1 && is(A[0] == T) && !__traits(isRef, args[0]))
 	{
-//		emplace!T(cast(void[])__payload);	// default construction
 		move(args[0], __object);
 		debug(Uniq) writefln("Unique.this(T)");
 	}
@@ -110,8 +87,7 @@ public:
 			debug(Uniq) writefln("Unique.~this()");
 	}
 
-	/// Disable copy construction
-	/// need fixing @@@BUG4437@@@ and @@@BUG4499@@@
+	/// Disable copy construction (Need fixing @@@BUG4437@@@ and @@@BUG4499@@@)
 	@disable this(this)
 	{
 		debug(Uniq) writefln("Unique.this(this)");
@@ -119,7 +95,8 @@ public:
 
 	/// Disable assignment with lvalue
 	@disable void opAssign(ref const(T) u) {}
-	@disable void opAssign(ref const(Unique) u) {}	/// ditto
+	/// ditto
+	@disable void opAssign(ref const(Unique) u) {}
 	
 	/// Assignment with rvalue of T
 	void opAssign(T u)
@@ -128,21 +105,12 @@ public:
 		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
 	}
 	
-	/// Assignment with rvalue of Unique
+	/// Assignment with rvalue of Unique!T
 	void opAssign(Unique u)
 	{
 		move(u, this);
 		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
 	}
-	
-/+	/// MAY NOT NEED?
-	bool isEmpty() const
-	{
-	  static if (is(T == class))
-		return false;
-	  else
-		return true;
-	}+/
 	
 	// Extract value and release uniqueness
 	T extract()
@@ -156,8 +124,15 @@ public:
 //	Unique move()	// move元はinitになるのでfilled=falseとなりownershipが移動する
 //	void swap()		// ownershipが交換されるので一意性は崩れない
   }
+  else
+  {
+	// moveに対しては特段の対応は必要ない
+	@disable template proxySwap(T){}	// hack for std.algorithm.swap
+  }
 
-	alias __object this;
+//	alias __object this;
+	mixin ValueProxy!__object;	// Relay any operations to __object, and
+								// blocking implicit conversion from Unique!T to T
 }
 
 
@@ -262,6 +237,151 @@ T* emplaceCopy(T)(void[] chunk, ref T obj) if (!is(T == struct))
 }
 
 
+template ValueProxy(alias a)
+{
+	auto opUnary(string op)()
+	{
+		return mixin(op ~ "a");
+	}
+	
+	auto opIndexUnary(string op, Args...)(Args args)
+	{
+		return mixin(op ~ "a[args]");
+	}
+	
+	auto opSliceUnary(string op, B, E)(B b, E e)
+	{
+		return mixin(op ~ "a[b .. e]");
+	}
+	auto opSliceUnary(string op)()
+	{
+		return mixin(op ~ "a[]");
+	}
+	
+	auto opCast(T)()
+	{
+		return cast(T)a;
+	}
+	
+	auto opBinary(string op, B)(B b)
+	{
+		return mixin("a " ~ op ~ " b");
+	}
+	
+	auto opEquals(B)(B b)
+	{
+		return a == b;
+	}
+	
+	auto opCmp(B)(B b)
+	{
+		static assert(!(__traits(compiles, a.opCmp(b)) && __traits(compiles, a.opCmp(b))));
+		
+		static if (__traits(compiles, a.opCmp(b)))
+			return a.opCmp(b);
+		else static if (__traits(compiles, b.opCmp(a)))
+			return -b.opCmp(a);
+		else
+		{
+			return a < b ? -1 : a > b ? +1 : 0;
+		}
+	}
+	
+	auto opCall(Args...)(Args args)
+	{
+		return a(args);
+	}
+	
+	auto opAssign(V)(V v)
+	{
+		return a = v;
+	}
+	
+	auto opSiliceAssign(V)(V v)
+	{
+		return a[] = v;
+	}
+	auto opSiliceAssign(V, B, E)(V v, B b, E e)
+	{
+		return a[b .. e] = v;
+	}
+	
+	auto opOpAssign(string op, V)(V v)
+	{
+		return mixin("a " ~ op~"= v");
+	}
+	auto opIndexOpAssign(string op, V, Args...)(V v, Args args)
+	{
+		return mixin("a[args] " ~ op~"= v");
+	}
+	auto opSliceOpAssign(string op, V, B, E)(V v, B b, E e)
+	{
+		return mixin("a[b .. e] " ~ op~"= v");
+	}
+	auto opSliceOpAssign(string op, V)(V v)
+	{
+		return mixin("a[] " ~ op~"= v");
+	}
+	
+	auto opIndex(Args...)(Args args)
+	{
+		return a[args];
+	}
+	auto opSlice()()
+	{
+		return a[];
+	}
+	auto opSlice(B, E)(B b, E e)
+	{
+		return a[b .. e];
+	}
+	
+	auto opDispatch(string name, Args...)(Args args)
+	{
+		// name is property?
+		static if (is(typeof(__traits(getMember, s, name)) == function))
+			return mixin("a." ~ name ~ "(args)");
+		else
+			static if (args.length == 0)
+				return mixin("a." ~ name);
+			else
+				return mixin("a." ~ name ~ " = args");
+	}
+}
+unittest
+{
+	static struct S
+	{
+		int value;
+		mixin ValueProxy!value through;
+		
+		this(int n){ value = n; }
+		
+		@disable opBinary(string op, B)(B b) if (op == "/"){}
+		//alias through.opBinary opBinary;
+		auto opBinary(string op, B)(B b) { return through.opBinary!(op, B)(b); }
+	}
+	
+	S s = S(10);
+	++s;
+	assert(s.value == 11);
+	
+	assert(cast(double)s == 11.0);
+	
+	assert(s * 2 == 22);
+	static assert(!__traits(compiles, s / 2));
+	S s2 = s * 10;
+	assert(s2 == 110);
+	s2 = s2 - 60;
+	assert(s2 == 50);
+	
+	static assert(!__traits(compiles, { int x = s; }()));
+	
+	int mul10(int n){ return n * 10; }
+	static assert(!__traits(compiles, { mul10(s) == 110; }()));
+}
+
+
 import std.stdio;
 import std.algorithm;
 
@@ -313,10 +433,12 @@ void main()
 		assert(us1.get == 20);
 		assert(us2.get == 10);
 	}
+	static assert(!__traits(compiles, {
+		auto us = Unique!S(10);
+		S s = us;	// TODO: Breaking uniqueness...?
+	}));
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
-		S s = us;	// TODO: Breaking uniqueness
+		S s = us.extract;	// Correct: explicit uniqueness releasing
 	}
 }
-
-
