@@ -24,6 +24,26 @@ bool isInitialState(T)(ref T obj)
 }
 
 
+template isClass(T)
+{
+	enum isClass = is(T == class);
+}
+
+template isInterface(T)
+{
+	enum isClass = is(T == interface);
+}
+
+template isReferenceType(T)
+{
+    enum isReferenceType = (isClass!T ||
+                            isInterface!T ||
+                            isPointer!T ||
+                            isDynamicArray!T ||
+                            isAssosiativeArray!T);
+}
+
+
 /**
 Unique type
 SeeAlso:
@@ -38,42 +58,45 @@ Construction:
 
 Example
 ----
-Unique!T u0;
-assert(u0 == T.init);
+Unique!T u;
+assert(u == T.init);
 
-Unique!T u1 = Unique!T(...);	// In-place construction
-u1 = T(...);					// Replace unique object. Old object is destroyed.
-u1 = T.init;					// Destroy unique object
+Unique!T u = Unique!T(...);	// In-place construction
+u = T(...);					// Replace unique object. Old object is destroyed.
+u = T.init;					// Destroy unique object
 
-Unique!T u2 = T(...);			// Move construction
-//T t = u2;						// implicit conversion from Unique!T to T is disabled
-T t = u2.extract;				// Release unique object
+//T t;
+//Unique!T u = t;			// Initialize with lvalue is rejected
+//u = t;					// Assignment with lvalue is rejected
+
+Unique!T u = T(...);		// Move construction
+//T t = u;					// implicit conversion from Unique!T to T is disabled
+T t = u.extract;			// Release unique object
 ----
 */
 struct Unique(T)
-	if (!is(T == interface) && //should
-	!is(T == class))	// for test
 {
 private:
-  static if (is(T == class))
-	ubyte[__traits(claasInstanceSize, T)] __payload;	// value semantics...mistake?
-  else
-  {
+	// Do not use union in order to initialize __object with T.init.
 	T __object;	// initialized with T.init by default-construction
 	@property ref ubyte[T.sizeof] __payload(){ return *(cast(ubyte[T.sizeof]*)&__object); }
-  }
 
 public:
 	/// In-place construction with args which constructor argumens of T
 	this(A...)(A args)
+//	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
 		if (!is(A[0] == Unique) && !is(A[0] == T))
 	{
+	  static if (isClass!T)	// emplaceはclassに対して値semanticsで動くので
+		__object = new T(args);
+	  else
 		emplace!T(cast(void[])__payload[], args);
 		debug(Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
 	}
 	/// Move construction with rvalue T
 	this(A...)(A args)
-		if (A.length == 1 && is(A[0] == T) && !__traits(isRef, args[0]))
+//	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
+		if (A.length == 1 && is(A[0] == T) && !__traits(isRef, args[0]))	// Rvalue check is now always true...
 	{
 		move(args[0], __object);
 		debug(Uniq) writefln("Unique.this(T)");
@@ -394,51 +417,56 @@ struct S
 	~this()		{
 		if (isInitialState(this))
 			writefln("S.~this() val = %s", val); }
-	
-	int get() const { return val; }
 }
 
 void main()
 {
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Unique!S us;
-//		assert(us.release == S.init);
+		assert(us == S.init);
 	}
+	// Do not work correctly. See Issue 5771
+/+	static assert(!__traits(compiles,
+	{
+		S s = S(99);
+		Unique!S us = s;
+	}));+/
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
-		assert(us.get == 10);
+		assert(us.val == 10);
 		Unique!S f(){ return Unique!S(20); }
 		us = f();
-		assert(us.get == 20);
+		assert(us.val == 20);
 		us = S(30);
-		assert(us.get == 30);
+		assert(us.val == 30);
 	}
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Unique!S us = S(10);
-		assert(us.get == 10);
+		assert(us.val == 10);
 	}
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Unique!S us1 = Unique!S(10);
-		assert(us1.get == 10);
+		assert(us1.val == 10);
 		Unique!S us2;
 		move(us1, us2);
-		assert(us2.get == 10);
+		assert(us2.val == 10);
 	}
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us1 = Unique!S(10);
 		auto us2 = Unique!S(20);
-		assert(us1.get == 10);
-		assert(us2.get == 20);
+		assert(us1.val == 10);
+		assert(us2.val == 20);
 		swap(us1, us2);
-		assert(us1.get == 20);
-		assert(us2.get == 10);
+		assert(us1.val == 20);
+		assert(us2.val == 10);
 	}
-	static assert(!__traits(compiles, {
+	static assert(!__traits(compiles,
+	{
 		auto us = Unique!S(10);
-		S s = us;	// TODO: Breaking uniqueness...?
+		S s = us;
 	}));
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
-		S s = us.extract;	// Correct: explicit uniqueness releasing
+		S s = us.extract;
 	}
 }
