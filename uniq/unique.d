@@ -1,3 +1,12 @@
+/**
+TODO:
+	const対応
+	assumeUiqueによるuniqueness付加
+Related:
+	@mono_shoo	http://ideone.com/gH9AX
+*/
+module unique;
+
 import std.algorithm : move;
 //import std.conv : emplace;
 import std.traits;
@@ -260,6 +269,7 @@ T* emplaceCopy(T)(void[] chunk, ref T obj) if (!is(T == struct))
 }
 
 
+// Blocking implicit/explicit value extraction
 template ValueProxy(alias a)
 {
 	auto opUnary(string op)()
@@ -283,6 +293,8 @@ template ValueProxy(alias a)
 	
 	auto opCast(T)()
 	{
+		// block extracting value by casting
+		static assert(!is(T : typeof(a)), "Cannot extract object with casting.");
 		return cast(T)a;
 	}
 	
@@ -468,5 +480,29 @@ void main()
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
 		S s = us.extract;
+	}
+	
+	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		static class Foo
+		{
+			int val;
+			this(Foo* foo, int n){ *foo = this; val = n; }
+			int opCast(T : int)(){ return val; }
+		}
+		
+		static assert(!__traits(compiles,
+		{
+			Foo foo;
+			auto us = Unique!Foo(&foo, 10);
+			Foo foo2 = cast(Foo)us;		// disable to bypass extract.
+			assert(foo2 is foo);
+		}));
+		{
+			Foo foo;
+			auto us = Unique!Foo(&foo, 10);
+			assert(us.__object is foo);	// internal test
+			int val = cast(int)us;
+			assert(val == 10);
+		}
 	}
 }
