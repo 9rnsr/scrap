@@ -94,7 +94,7 @@ public:
 	/// In-place construction with args which constructor argumens of T
 	this(A...)(A args)
 //	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
-		if (!is(A[0] == Unique) && !is(A[0] == T))
+		if (!is(A[0] _ == Unique!U, U : T) && !is(A[0] _ == U, U : T))
 	{
 	  static if (isClass!T)	// emplaceはclassに対して値semanticsで動くので
 		__object = new T(args);
@@ -105,10 +105,31 @@ public:
 	/// Move construction with rvalue T
 	this(A...)(A args)
 //	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
-		if (A.length == 1 && is(A[0] == T) && !__traits(isRef, args[0]))	// Rvalue check is now always true...
+		if (A.length == 1 && is(A[0] _ == U, U : T) && !__traits(isRef, args[0]))	// Rvalue check is now always true...
 	{
-		move(args[0], __object);
-		debug(Uniq) writefln("Unique.this(T)");
+		static if (is(A[0] _ == U, U : T) && is(U == T))
+			move(args[0], __object);
+		else
+			__object = args[0];
+		debug(Uniq) writefln("Unique.this(%s)", T.stringof);
+	}
+	/// Move construction with rvalue T
+	this(A...)(A args)
+//	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
+		if (A.length == 1 && is(A[0] _ == Unique!U, U : T) && !__traits(isRef, args[0]))	// Rvalue check is now always true...
+	{
+		static if (is(A[0] _ == Unique!U, U : T) && is(U == T))
+		{
+			move(args[0].__object, __object);
+			debug(Uniq) writefln("Unique.this(Unique!(%s))", T.stringof);
+		}
+		else
+		{
+		//	pragma(msg, T);
+		//	pragma(msg, typeof(args[0]));
+			__object = args[0].__object;
+			debug(Uniq) writefln("Unique.this(Unique!(%s : %s))", U.stringof, T.stringof);
+		}
 	}
 	
 	// for debug print
@@ -125,6 +146,8 @@ public:
 		debug(Uniq) writefln("Unique.this(this)");
 	}
 
+  version(all)
+  {
 	/// Disable assignment with lvalue
 	@disable void opAssign(ref const(T) u) {}
 	/// ditto
@@ -133,16 +156,39 @@ public:
 	/// Assignment with rvalue of T
 	void opAssign(T u)
 	{
-		move(u, __object);
 		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
+		move(u, __object);
 	}
 	
 	/// Assignment with rvalue of Unique!T
 	void opAssign(Unique u)
 	{
-		move(u, this);
 		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
+		move(u, this);
 	}
+  }
+  else
+  {
+	/// Assignment with rvalue of U : T
+	void opAssign(U : T)(U u) if (!__traits(isRef, u))
+	{
+		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
+		static if (is(U == T))
+			move(u, __object);
+		else
+			__object = u;
+	}
+	
+	/// Assignment with rvalue of Unique!(U : T)
+	void opAssign(U : T)(Unique!U u) if (!__traits(isRef, u))
+	{
+		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
+		static if (is(U == T))
+			move(u, this);
+		else
+			__object = args[0].__object;
+	}
+  }
 	
 	// Extract value and release uniqueness
 	T extract()
@@ -482,27 +528,68 @@ void main()
 		S s = us.extract;
 	}
 	
+	static class Foo
+	{
+		int val;
+		this(int n){ val = n; }
+		this(Foo* foo, int n){ *foo = this; val = n; }	// for internal test
+		int opCast(T : int)(){ return val; }
+	}
+	static class Bar : Foo
+	{
+		this(int n){ super(n); }
+	}
+	
+	static assert(!__traits(compiles,
+	{
+		Foo foo;
+		auto us = Unique!Foo(&foo, 10);
+		Foo foo2 = cast(Foo)us;		// disable to bypass extract.
+		assert(foo2 is foo);
+	}));
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-		static class Foo
-		{
-			int val;
-			this(Foo* foo, int n){ *foo = this; val = n; }
-			int opCast(T : int)(){ return val; }
-		}
+		Foo foo;
+		auto us = Unique!Foo(&foo, 10);
+		assert(us.__object is foo);	// internal test
+		int val = cast(int)us;
+		assert(val == 10);
+	}
+	
+	// init / assign test
+	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		Unique!Foo us = new Foo(10);		// Unique!Foo <- Foo (init)
+		assert(us.val == 10);
 		
-		static assert(!__traits(compiles,
-		{
-			Foo foo;
-			auto us = Unique!Foo(&foo, 10);
-			Foo foo2 = cast(Foo)us;		// disable to bypass extract.
-			assert(foo2 is foo);
-		}));
-		{
-			Foo foo;
-			auto us = Unique!Foo(&foo, 10);
-			assert(us.__object is foo);	// internal test
-			int val = cast(int)us;
-			assert(val == 10);
-		}
+		us = new Foo(20);					// Unique!Foo <- Foo (assign)
+		assert(us.val == 20);
+	}
+	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		
+		// Unique!Foo <- Unique!Foo (init)
+		Unique!Foo us = Unique!Foo(Unique!Foo(10));
+		assert(us.val == 10);
+		
+		// Unique!Foo <- Unique!Foo (assign)
+		us = Unique!Foo(20);
+		assert(us.val == 20);
+	}
+	
+	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		// Unique!Foo <- Bar (init)
+		Unique!Foo us = new Bar(10);
+		assert(us.val == 10);
+		
+	//	// Unique!Foo <- Bar (assign)
+	//	us = new Bar(20);
+	//	assert(us.val == 20);
+	}
+	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		// Unique!Foo <- Unique!Bar (init)
+		Unique!Foo us = Unique!Bar(10);
+		assert(us.val == 10);
+		
+	//	// Unique!Foo <- Unique!Bar (assign)
+	//	us = Unique!Bar(20);
+	//	assert(us.val == 20);
 	}
 }
