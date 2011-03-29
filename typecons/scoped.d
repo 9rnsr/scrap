@@ -1,5 +1,7 @@
 import std.conv : emplace;
 
+import valueproxy;
+
 Scoped!T scoped(T, A...)(A args)
 {
 	// return value through hidden pointer.
@@ -68,8 +70,8 @@ struct Scoped(T) if (is(T == class))
 		}
 	}
 
-	alias __object this;
-	//mixin valueProxy!__object;	// blocking conversion Scoped!T to T, may need?
+	//alias __object this;
+	mixin ValueProxy!__object;	// blocking conversion Scoped!T to T, may need?
 }
 
 
@@ -96,9 +98,6 @@ void main()
 		auto a2 = scoped!A(1);
 		assert(a2.check());
 		assert(A.cnt == 2);
-		
-		a1.a = a1;
-		assert(a1.check());
 	}
 	assert(A.cnt == 0);	// destructors called on scope exit
 }
