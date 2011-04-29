@@ -5,6 +5,7 @@ Related:
 	@mono_shoo	http://ideone.com/gH9AX
 
 DMD patches
+	Issue 4424 - Copy constructor and templated opAssign cannot coexist
 	Issue 5771 - Template constructor and auto ref do not work
 	Issue 5889 - Struct literal,construction should be rvalue
 */
@@ -165,7 +166,7 @@ public:
 		debug(Uniq) writefln("Unique.this(this)");
 	}
 
-  version(all)
+  version(none)	// @@@BUG4424@@@ workaround
   {
 	/// Disable assignment with lvalue
 	@disable void opAssign(ref const(T) u) {}
@@ -189,8 +190,10 @@ public:
   else
   {
 	/// Assignment with rvalue of U : T
-	void opAssign(U : T)(U u) if (!__traits(isRef, u))
+	void opAssign(U : T)(auto ref U u)
 	{
+		static assert(!__traits(isRef, u));
+
 		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
 		static if (is(U == T))
 			move(u, __object);
@@ -199,13 +202,15 @@ public:
 	}
 
 	/// Assignment with rvalue of Unique!(U : T)
-	void opAssign(U : T)(Unique!U u) if (!__traits(isRef, u))
+	void opAssign(U : T)(auto ref Unique!U u)
 	{
+		static assert(!__traits(isRef, u));
+
 		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
 		static if (is(U == T))
 			move(u, this);
 		else
-			__object = args[0].__object;
+			__object = u.__object;
 	}
   }
 
@@ -442,18 +447,18 @@ void main()
 		// Unique!Foo <- Bar (init)
 		Unique!Foo us = new Bar(10);
 		assert(us.val == 10);
-		
-	//	// Unique!Foo <- Bar (assign)
-	//	us = new Bar(20);
-	//	assert(us.val == 20);
+
+		// Unique!Foo <- Bar (assign)
+		us = new Bar(20);
+		assert(us.val == 20);
 	}
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Unique!Bar (init)
 		Unique!Foo us = Unique!Bar(10);
 		assert(us.val == 10);
-		
-	//	// Unique!Foo <- Unique!Bar (assign)
-	//	us = Unique!Bar(20);
-	//	assert(us.val == 20);
+
+		// Unique!Foo <- Unique!Bar (assign)
+		us = Unique!Bar(20);
+		assert(us.val == 20);
 	}
 }
