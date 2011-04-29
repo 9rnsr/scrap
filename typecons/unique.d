@@ -3,6 +3,10 @@ TODO:
 	assumeUiqueによるuniqueness付加
 Related:
 	@mono_shoo	http://ideone.com/gH9AX
+
+DMD patches
+	Issue 5771 - Template constructor and auto ref do not work
+	Issue 5889 - Struct literal,construction should be rvalue
 */
 module unique;
 
@@ -85,6 +89,23 @@ T t = u.extract;			// Release unique object
 */
 struct Unique(T)
 {
+	template isStorableT(X...)
+	{
+		static if (X.length != 1 || is(X[0] _ == Unique!U, U))
+			enum isStorableT = false;
+		else
+			enum isStorableT = 
+				((is(T == class) || is(T == interface)) && is(X[0] : T)) ||
+				is(X[0] == T);
+	}
+	template isStorableU(X...)
+	{
+		static if (is(X[0] _ == Unique!U, U))
+			enum isStorableU = isStorableT!U;
+		else
+			enum isStorableU = false;
+	}
+	
 private:
 	// Do not use union in order to initialize __object with T.init.
 	T __object;	// initialized with T.init by default-construction
@@ -92,9 +113,7 @@ private:
 
 public:
 	/// In-place construction with args which constructor argumens of T
-	this(A...)(A args)
-//	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
-		if (!is(A[0] _ == Unique!U, U : T) && !is(A[0] _ == U, U : T))
+	this(A...)(auto ref A args) if (!isStorableT!A && !isStorableU!A)
 	{
 	  static if (isClass!T)	// emplaceはclassに対して値semanticsで動くので
 		__object = new T(args);
@@ -103,10 +122,10 @@ public:
 		debug(Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
 	}
 	/// Move construction with rvalue T
-	this(A...)(A args)
-//	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
-		if (A.length == 1 && is(A[0] _ == U, U : T) && !__traits(isRef, args[0]))	// Rvalue check is now always true...
+	this(A...)(auto ref A args) if (isStorableT!A)
 	{
+		static assert(!__traits(isRef, args[0]));
+
 		static if (is(A[0] _ == U, U : T) && is(U == T))
 			move(args[0], __object);
 		else
@@ -114,10 +133,10 @@ public:
 		debug(Uniq) writefln("Unique.this(%s)", T.stringof);
 	}
 	/// Move construction with rvalue T
-	this(A...)(A args)
-//	this(A...)(auto ref A args)	// Issue 5771 - Now template constructor and auto ref cannot use together
-		if (A.length == 1 && is(A[0] _ == Unique!U, U : T) && !__traits(isRef, args[0]))	// Rvalue check is now always true...
+	this(A...)(auto ref A args) if (isStorableU!A)
 	{
+		static assert(!__traits(isRef, args[0]));
+
 		static if (is(A[0] _ == Unique!U, U : T) && is(U == T))
 		{
 			move(args[0].__object, __object);
@@ -329,12 +348,11 @@ void main()
 		Unique!S us;
 		assert(us == S.init);
 	}
-	// Do not work correctly. See Issue 5771
-/+	static assert(!__traits(compiles,
+	static assert(!__traits(compiles,
 	{
 		S s = S(99);
 		Unique!S us = s;
-	}));+/
+	}));
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
 		assert(us.val == 10);
