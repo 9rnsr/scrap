@@ -1,6 +1,5 @@
 /**
 TODO:
-	const対応
 	assumeUiqueによるuniqueness付加
 Related:
 	@mono_shoo	http://ideone.com/gH9AX
@@ -132,16 +131,16 @@ public:
 			debug(Uniq) writefln("Unique.this(Unique!(%s : %s))", U.stringof, T.stringof);
 		}
 	}
-	
+
 	// for debug print
 	debug(Uniq) ~this()
 	{
 		// for debug
 		if (isInitialState(__object))
-			debug(Uniq) writefln("Unique.~this()");
+			writefln("Unique.~this()");
 	}
 
-	/// Disable copy construction (Need fixing @@@BUG4437@@@ and @@@BUG4499@@@)
+	/// Disable copy construction
 	@disable this(this)
 	{
 		debug(Uniq) writefln("Unique.this(this)");
@@ -153,14 +152,14 @@ public:
 	@disable void opAssign(ref const(T) u) {}
 	/// ditto
 	@disable void opAssign(ref const(Unique) u) {}
-	
+
 	/// Assignment with rvalue of T
 	void opAssign(T u)
 	{
 		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
 		move(u, __object);
 	}
-	
+
 	/// Assignment with rvalue of Unique!T
 	void opAssign(Unique u)
 	{
@@ -179,7 +178,7 @@ public:
 		else
 			__object = u;
 	}
-	
+
 	/// Assignment with rvalue of Unique!(U : T)
 	void opAssign(U : T)(Unique!U u) if (!__traits(isRef, u))
 	{
@@ -190,28 +189,35 @@ public:
 			__object = args[0].__object;
 	}
   }
-	
+
 	// Extract value and release uniqueness
 	T extract()
 	{
 		return move(__object);
 	}
 
+	// moveに対しては特段の対応は必要ない
+
+	@disable template proxySwap(T){}	// hack for std.algorithm.swap
+
   version(none)
   {
-	// std.algorithm.move/swap でたぶんOK
-//	Unique move()	// move元はinitになるのでfilled=falseとなりownershipが移動する
-//	void swap()		// ownershipが交換されるので一意性は崩れない
+	alias __object this;
+
+	// refuse explicit casting
+	auto ref opCast(U)()				{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
+	auto ref opCast(U)() const			{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
+	auto ref opCast(U)() immutable		{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
+	auto ref opCast(U)() shared			{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
+	auto ref opCast(U)() const shared	{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
+
+	// cannot refuse implicit casting...
   }
   else
   {
-	// moveに対しては特段の対応は必要ない
-	@disable template proxySwap(T){}	// hack for std.algorithm.swap
-  }
-
-//	alias __object this;
 	mixin ValueProxy!__object;	// Relay any operations to __object, and
 								// blocking implicit conversion from Unique!T to T
+  }
 }
 
 
@@ -308,17 +314,18 @@ import std.algorithm;
 struct S
 {
 	int val;
-	
-	this(int n)	{ writefln("S.this(%s)", val = n); }
-	this(this)	{ writefln("S.this(this)"); }
+
+	this(int n)	{ debug(Uniq) writefln("S.this(%s)", n); val = n; }
+	this(this)	{ debug(Uniq) writefln("S.this(this)"); }
 	~this()		{
+	  debug(Uniq)
 		if (isInitialState(this))
 			writefln("S.~this() val = %s", val); }
 }
 
 void main()
 {
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Unique!S us;
 		assert(us == S.init);
 	}
@@ -328,7 +335,7 @@ void main()
 		S s = S(99);
 		Unique!S us = s;
 	}));+/
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
 		assert(us.val == 10);
 		Unique!S f(){ return Unique!S(20); }
@@ -337,7 +344,7 @@ void main()
 		us = S(30);
 		assert(us.val == 30);
 	}
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Unique!S us = S(10);
 		assert(us.val == 10);
 	}
@@ -348,7 +355,7 @@ void main()
 		move(us1, us2);
 		assert(us2.val == 10);
 	}
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us1 = Unique!S(10);
 		auto us2 = Unique!S(20);
 		assert(us1.val == 10);
@@ -362,11 +369,11 @@ void main()
 		auto us = Unique!S(10);
 		S s = us;
 	}));
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		auto us = Unique!S(10);
 		S s = us.extract;
 	}
-	
+
 	static class Foo
 	{
 		int val;
@@ -378,7 +385,7 @@ void main()
 	{
 		this(int n){ super(n); }
 	}
-	
+
 	static assert(!__traits(compiles,
 	{
 		Foo foo;
@@ -386,34 +393,34 @@ void main()
 		Foo foo2 = cast(Foo)us;		// disable to bypass extract.
 		assert(foo2 is foo);
 	}));
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Foo foo;
 		auto us = Unique!Foo(&foo, 10);
 		assert(us.__object is foo);	// internal test
 		int val = cast(int)us;
 		assert(val == 10);
 	}
-	
+
 	// init / assign test
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Unique!Foo us = new Foo(10);		// Unique!Foo <- Foo (init)
 		assert(us.val == 10);
-		
+
 		us = new Foo(20);					// Unique!Foo <- Foo (assign)
 		assert(us.val == 20);
 	}
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-		
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+
 		// Unique!Foo <- Unique!Foo (init)
 		Unique!Foo us = Unique!Foo(Unique!Foo(10));
 		assert(us.val == 10);
-		
+
 		// Unique!Foo <- Unique!Foo (assign)
 		us = Unique!Foo(20);
 		assert(us.val == 20);
 	}
-	
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Bar (init)
 		Unique!Foo us = new Bar(10);
 		assert(us.val == 10);
@@ -422,7 +429,7 @@ void main()
 	//	us = new Bar(20);
 	//	assert(us.val == 20);
 	}
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Unique!Bar (init)
 		Unique!Foo us = Unique!Bar(10);
 		assert(us.val == 10);

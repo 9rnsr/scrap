@@ -1,45 +1,149 @@
+/**
+DMD patches
+	Issue 5856 - overloading on const doesn't work for operator overload
+	Issue 5896 - const overload matching is succumb to template parameter one
+*/
 module valueproxy;
 
 
 // Blocking implicit/explicit value extraction
 template ValueProxy(alias a)
 {
-	auto opUnary(string op)()
+	             auto ref opUnary(string op)()										{ return mixin(op ~ "a"); }
+	       const auto ref opUnary(string op)()										{ return mixin(op ~ "a"); }
+	   immutable auto ref opUnary(string op)()										{ return mixin(op ~ "a"); }
+	      shared auto ref opUnary(string op)()										{ return mixin(op ~ "a"); }
+	const shared auto ref opUnary(string op)()										{ return mixin(op ~ "a"); }
+
+	             auto ref opIndexUnary(string op, I...)(auto ref I i)				{ return mixin(op ~ "a[i]"); }
+	       const auto ref opIndexUnary(string op, I...)(auto ref I i)				{ return mixin(op ~ "a[i]"); }
+	   immutable auto ref opIndexUnary(string op, I...)(auto ref I i)				{ return mixin(op ~ "a[i]"); }
+	      shared auto ref opIndexUnary(string op, I...)(auto ref I i)				{ return mixin(op ~ "a[i]"); }
+	const shared auto ref opIndexUnary(string op, I...)(auto ref I i)				{ return mixin(op ~ "a[i]"); }
+
+	             auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
+	       const auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
+	   immutable auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
+	      shared auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
+	const shared auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
+
+	auto ref opCast(T)()
 	{
-		return mixin(op ~ "a");
-	}
-	
-	auto opIndexUnary(string op, Args...)(Args args)
-	{
-		return mixin(op ~ "a[args]");
-	}
-	
-	auto opSliceUnary(string op, B, E)(B b, E e)
-	{
-		return mixin(op ~ "a[b .. e]");
-	}
-	auto opSliceUnary(string op)()
-	{
-		return mixin(op ~ "a[]");
-	}
-	
-	auto opCast(T)()
-	{
-		// block extracting value by casting
 		static assert(!is(T : typeof(a)), "Cannot extract object with casting.");
 		return cast(T)a;
 	}
-	
-	auto opBinary(string op, B)(B b)
+	auto ref opCast(T)() const
 	{
-		return mixin("a " ~ op ~ " b");
+		static assert(!is(T : typeof(a)), "Cannot extract object with casting.");
+		return cast(T)a;
 	}
-	
+	auto ref opCast(T)() immutable
+	{
+		static assert(!is(T : typeof(a)), "Cannot extract object with casting.");
+		return cast(T)a;
+	}
+	auto ref opCast(T)() shared
+	{
+		static assert(!is(T : typeof(a)), "Cannot extract object with casting.");
+		return cast(T)a;
+	}
+	auto ref opCast(T)() const shared
+	{
+		static assert(!is(T : typeof(a)), "Cannot extract object with casting.");
+		return cast(T)a;
+	}
+
+	             auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
+	       const auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
+	   immutable auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
+	      shared auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
+	const shared auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
+
+	             auto ref opBinaryRight(string op, B)(auto ref B b)	{ return mixin("a " ~ op ~ " b"); }
+	       const auto ref opBinaryRight(string op, B)(auto ref B b)	{ return mixin("a " ~ op ~ " b"); }
+	   immutable auto ref opBinaryRight(string op, B)(auto ref B b)	{ return mixin("a " ~ op ~ " b"); }
+	      shared auto ref opBinaryRight(string op, B)(auto ref B b)	{ return mixin("a " ~ op ~ " b"); }
+	const shared auto ref opBinaryRight(string op, B)(auto ref B b)	{ return mixin("a " ~ op ~ " b"); }
+
+	             auto ref opCall(Args...)(auto ref Args args)		{ return a(args); }
+	       const auto ref opCall(Args...)(auto ref Args args)		{ return a(args); }
+	   immutable auto ref opCall(Args...)(auto ref Args args)		{ return a(args); }
+	      shared auto ref opCall(Args...)(auto ref Args args)		{ return a(args); }
+	const shared auto ref opCall(Args...)(auto ref Args args)		{ return a(args); }
+
+	             auto ref opIndex(I...)(auto ref I i)					{ return a[i]; }
+	       const auto ref opIndex(I...)(auto ref I i)					{ return a[i]; }
+	   immutable auto ref opIndex(I...)(auto ref I i)					{ return a[i]; }
+	      shared auto ref opIndex(I...)(auto ref I i)					{ return a[i]; }
+	const shared auto ref opIndex(I...)(auto ref I i)					{ return a[i]; }
+
+	             auto ref opSlice()()									{ return a[]; }
+	       const auto ref opSlice()()									{ return a[]; }
+	   immutable auto ref opSlice()()									{ return a[]; }
+	      shared auto ref opSlice()()									{ return a[]; }
+	const shared auto ref opSlice()()									{ return a[]; }
+
+	             auto ref opSlice(B, E)(auto ref B b, auto ref E e)		{ return a[b..e]; }
+	       const auto ref opSlice(B, E)(auto ref B b, auto ref E e)		{ return a[b..e]; }
+	   immutable auto ref opSlice(B, E)(auto ref B b, auto ref E e)		{ return a[b..e]; }
+	      shared auto ref opSlice(B, E)(auto ref B b, auto ref E e)		{ return a[b..e]; }
+	const shared auto ref opSlice(B, E)(auto ref B b, auto ref E e)		{ return a[b..e]; }
+
+	             auto ref opAssign(V)(auto ref V v)										{ return a = v; }
+	       const auto ref opAssign(V)(auto ref V v)										{ return a = v; }
+	   immutable auto ref opAssign(V)(auto ref V v)										{ return a = v; }
+	      shared auto ref opAssign(V)(auto ref V v)										{ return a = v; }
+	const shared auto ref opAssign(V)(auto ref V v)										{ return a = v; }
+
+	             auto ref opIndexAssign(V, I...)(auto ref V v, auto ref I i)			{ return a[i] = v; }
+	       const auto ref opIndexAssign(V, I...)(auto ref V v, auto ref I i)			{ return a[i] = v; }
+	   immutable auto ref opIndexAssign(V, I...)(auto ref V v, auto ref I i)			{ return a[i] = v; }
+	      shared auto ref opIndexAssign(V, I...)(auto ref V v, auto ref I i)			{ return a[i] = v; }
+	const shared auto ref opIndexAssign(V, I...)(auto ref V v, auto ref I i)			{ return a[i] = v; }
+
+	             auto ref opSiliceAssign(V, R...)(auto ref V v)							{ return a[] = v; }
+	       const auto ref opSiliceAssign(V, R...)(auto ref V v)							{ return a[] = v; }
+	   immutable auto ref opSiliceAssign(V, R...)(auto ref V v)							{ return a[] = v; }
+	      shared auto ref opSiliceAssign(V, R...)(auto ref V v)							{ return a[] = v; }
+	const shared auto ref opSiliceAssign(V, R...)(auto ref V v)							{ return a[] = v; }
+
+	             auto ref opSiliceAssign(V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return a[b..e] = v; }
+	       const auto ref opSiliceAssign(V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return a[b..e] = v; }
+	   immutable auto ref opSiliceAssign(V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return a[b..e] = v; }
+	      shared auto ref opSiliceAssign(V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return a[b..e] = v; }
+	const shared auto ref opSiliceAssign(V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return a[b..e] = v; }
+
+	             auto ref opOpAssign(string op, V)(auto ref V v)										{ return mixin("a " ~ op~"= v"); }
+	       const auto ref opOpAssign(string op, V)(auto ref V v)										{ return mixin("a " ~ op~"= v"); }
+	   immutable auto ref opOpAssign(string op, V)(auto ref V v)										{ return mixin("a " ~ op~"= v"); }
+	      shared auto ref opOpAssign(string op, V)(auto ref V v)										{ return mixin("a " ~ op~"= v"); }
+	const shared auto ref opOpAssign(string op, V)(auto ref V v)										{ return mixin("a " ~ op~"= v"); }
+
+	             auto ref opIndexOpAssign(string op, V, I...)(auto ref V v, auto ref I i)				{ return mixin("a[i] " ~ op~"= v"); }
+	       const auto ref opIndexOpAssign(string op, V, I...)(auto ref V v, auto ref I i)				{ return mixin("a[i] " ~ op~"= v"); }
+	   immutable auto ref opIndexOpAssign(string op, V, I...)(auto ref V v, auto ref I i)				{ return mixin("a[i] " ~ op~"= v"); }
+	      shared auto ref opIndexOpAssign(string op, V, I...)(auto ref V v, auto ref I i)				{ return mixin("a[i] " ~ op~"= v"); }
+	const shared auto ref opIndexOpAssign(string op, V, I...)(auto ref V v, auto ref I i)				{ return mixin("a[i] " ~ op~"= v"); }
+
+	             auto ref opSliceOpAssign(string op, V)(auto ref V v)									{ return mixin("a[] " ~ op~"= v"); }
+	       const auto ref opSliceOpAssign(string op, V)(auto ref V v)									{ return mixin("a[] " ~ op~"= v"); }
+	   immutable auto ref opSliceOpAssign(string op, V)(auto ref V v)									{ return mixin("a[] " ~ op~"= v"); }
+	      shared auto ref opSliceOpAssign(string op, V)(auto ref V v)									{ return mixin("a[] " ~ op~"= v"); }
+	const shared auto ref opSliceOpAssign(string op, V)(auto ref V v)									{ return mixin("a[] " ~ op~"= v"); }
+
+	             auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
+	       const auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
+	   immutable auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
+	      shared auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
+	const shared auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
+
+	// todo
 	auto opEquals(B)(B b)
 	{
 		return a == b;
 	}
-	
+
+	// todo
 	auto opCmp(B)(B b)
 	{
 		static assert(!(__traits(compiles, a.opCmp(b)) && __traits(compiles, a.opCmp(b))));
@@ -53,57 +157,8 @@ template ValueProxy(alias a)
 			return a < b ? -1 : a > b ? +1 : 0;
 		}
 	}
-	
-	auto opCall(Args...)(Args args)
-	{
-		return a(args);
-	}
-	
-	auto opAssign(V)(V v)
-	{
-		return a = v;
-	}
-	
-	auto opSiliceAssign(V)(V v)
-	{
-		return a[] = v;
-	}
-	auto opSiliceAssign(V, B, E)(V v, B b, E e)
-	{
-		return a[b .. e] = v;
-	}
-	
-	auto opOpAssign(string op, V)(V v)
-	{
-		return mixin("a " ~ op~"= v");
-	}
-	auto opIndexOpAssign(string op, V, Args...)(V v, Args args)
-	{
-		return mixin("a[args] " ~ op~"= v");
-	}
-	auto opSliceOpAssign(string op, V, B, E)(V v, B b, E e)
-	{
-		return mixin("a[b .. e] " ~ op~"= v");
-	}
-	auto opSliceOpAssign(string op, V)(V v)
-	{
-		return mixin("a[] " ~ op~"= v");
-	}
-	
-	auto opIndex(Args...)(Args args)
-	{
-		return a[args];
-	}
-	auto opSlice()()
-	{
-		return a[];
-	}
-	auto opSlice(B, E)(B b, E e)
-	{
-		return a[b .. e];
-	}
-	
-	auto opDispatch(string name, Args...)(Args args)
+
+	auto ref opDispatch(string name, Args...)(Args args)
 	{
 		// name is property?
 		static if (is(typeof(__traits(getMember, s, name)) == function))
@@ -114,6 +169,53 @@ template ValueProxy(alias a)
 			else
 				return mixin("a." ~ name ~ " = args");
 	}
+  version(none)	// property dispatch problem
+  {
+	auto ref opDispatch(string name, Args...)(Args args) const
+	{
+		// name is property?
+		static if (is(typeof(__traits(getMember, s, name)) == function))
+			return mixin("a." ~ name ~ "(args)");
+		else
+			static if (args.length == 0)
+				return mixin("a." ~ name);
+			else
+				return mixin("a." ~ name ~ " = args");
+	}
+	auto ref opDispatch(string name, Args...)(Args args) immutable
+	{
+		// name is property?
+		static if (is(typeof(__traits(getMember, s, name)) == function))
+			return mixin("a." ~ name ~ "(args)");
+		else
+			static if (args.length == 0)
+				return mixin("a." ~ name);
+			else
+				return mixin("a." ~ name ~ " = args");
+	}
+	auto ref opDispatch(string name, Args...)(Args args) shared
+	{
+		// name is property?
+		static if (is(typeof(__traits(getMember, s, name)) == function))
+			return mixin("a." ~ name ~ "(args)");
+		else
+			static if (args.length == 0)
+				return mixin("a." ~ name);
+			else
+				return mixin("a." ~ name ~ " = args");
+	}
+	auto ref opDispatch(string name, Args...)(Args args) const shared
+	{
+		// name is property?
+		static if (is(typeof(__traits(getMember, s, name)) == function))
+			return mixin("a." ~ name ~ "(args)");
+		else
+			static if (args.length == 0)
+				return mixin("a." ~ name);
+			else
+				return mixin("a." ~ name ~ " = args");
+	}
+  }
 }
 unittest
 {
@@ -121,31 +223,29 @@ unittest
 	{
 		int value;
 		mixin ValueProxy!value through;
-		
+
 		this(int n){ value = n; }
-		
+
 		@disable opBinary(string op, B)(B b) if (op == "/"){}
 		//alias through.opBinary opBinary;
 		auto opBinary(string op, B)(B b) { return through.opBinary!(op, B)(b); }
 	}
-	
+
 	S s = S(10);
 	++s;
 	assert(s.value == 11);
-	
+
 	assert(cast(double)s == 11.0);
-	
+
 	assert(s * 2 == 22);
 	static assert(!__traits(compiles, s / 2));
 	S s2 = s * 10;
 	assert(s2 == 110);
 	s2 = s2 - 60;
 	assert(s2 == 50);
-	
+
 	static assert(!__traits(compiles, { int x = s; }()));
-	
+
 	int mul10(int n){ return n * 10; }
 	static assert(!__traits(compiles, { mul10(s) == 110; }()));
 }
-
-
