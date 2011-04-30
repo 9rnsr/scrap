@@ -116,10 +116,10 @@ public:
 	/// In-place construction with args which constructor argumens of T
 	this(A...)(auto ref A args) if (!isStorableT!A && !isStorableU!A)
 	{
-	  static if (isClass!T)	// emplaceはclassに対して値semanticsで動くので
-		__object = new T(args);
-	  else
-		emplace!T(cast(void[])__payload[], args);
+		static if (isClass!T)	// emplaceはclassに対して値semanticsで動くので
+			__object = new T(args);
+		else
+			emplace!T(cast(void[])__payload[], args);
 		debug(Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
 	}
 	/// Move construction with rvalue T
@@ -139,17 +139,10 @@ public:
 		static assert(!__traits(isRef, args[0]));
 
 		static if (is(A[0] _ == Unique!U, U : T) && is(U == T))
-		{
 			move(args[0].__object, __object);
-			debug(Uniq) writefln("Unique.this(Unique!(%s))", T.stringof);
-		}
 		else
-		{
-		//	pragma(msg, T);
-		//	pragma(msg, typeof(args[0]));
 			__object = args[0].__object;
-			debug(Uniq) writefln("Unique.this(Unique!(%s : %s))", U.stringof, T.stringof);
-		}
+		debug(Uniq) writefln("Unique.this(Unique!(%s%s))", U.stringof, (is(U == T) ? "" : " : "~T.stringof));
 	}
 
 	// for debug print
@@ -161,34 +154,8 @@ public:
 	}
 
 	/// Disable copy construction
-	@disable this(this)
-	{
-		debug(Uniq) writefln("Unique.this(this)");
-	}
+	@disable this(this) {}
 
-  version(none)	// @@@BUG4424@@@ workaround
-  {
-	/// Disable assignment with lvalue
-	@disable void opAssign(ref const(T) u) {}
-	/// ditto
-	@disable void opAssign(ref const(Unique) u) {}
-
-	/// Assignment with rvalue of T
-	void opAssign(T u)
-	{
-		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
-		move(u, __object);
-	}
-
-	/// Assignment with rvalue of Unique!T
-	void opAssign(Unique u)
-	{
-		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
-		move(u, this);
-	}
-  }
-  else
-  {
 	/// Assignment with rvalue of U : T
 	void opAssign(U : T)(auto ref U u)
 	{
@@ -212,7 +179,6 @@ public:
 		else
 			__object = u.__object;
 	}
-  }
 
 	// Extract value and release uniqueness
 	T extract()
@@ -220,9 +186,10 @@ public:
 		return move(__object);
 	}
 
-	// moveに対しては特段の対応は必要ない
+	// Nothing is required for move operations
 
-	@disable template proxySwap(T){}	// hack for std.algorithm.swap
+	// Hack for std.algorithm.swap
+	@disable template proxySwap(T){}
 
   version(none)
   {
@@ -426,18 +393,17 @@ void main()
 
 	// init / assign test
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-		Unique!Foo us = new Foo(10);		// Unique!Foo <- Foo (init)
+		// Unique!Foo <- Foo (init)
+		Unique!Foo us = new Foo(10);
 		assert(us.val == 10);
-
-		us = new Foo(20);					// Unique!Foo <- Foo (assign)
+		// Unique!Foo <- Foo (assign)
+		us = new Foo(20);
 		assert(us.val == 20);
 	}
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-
 		// Unique!Foo <- Unique!Foo (init)
 		Unique!Foo us = Unique!Foo(Unique!Foo(10));
 		assert(us.val == 10);
-
 		// Unique!Foo <- Unique!Foo (assign)
 		us = Unique!Foo(20);
 		assert(us.val == 20);
@@ -447,7 +413,6 @@ void main()
 		// Unique!Foo <- Bar (init)
 		Unique!Foo us = new Bar(10);
 		assert(us.val == 10);
-
 		// Unique!Foo <- Bar (assign)
 		us = new Bar(20);
 		assert(us.val == 20);
@@ -456,7 +421,6 @@ void main()
 		// Unique!Foo <- Unique!Bar (init)
 		Unique!Foo us = Unique!Bar(10);
 		assert(us.val == 10);
-
 		// Unique!Foo <- Unique!Bar (assign)
 		us = Unique!Bar(20);
 		assert(us.val == 20);
