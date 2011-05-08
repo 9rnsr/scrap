@@ -2,6 +2,7 @@
 DMD patches
 	Issue 5856 - overloading on const doesn't work for operator overload
 	Issue 5896 - const overload matching is succumb to template parameter one
+	Issue 5962 - Template function declaration with prefixed storage class and auto occurs conflict
 */
 module valueproxy;
 
@@ -76,11 +77,11 @@ template ValueProxy(alias a)
 	      shared auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
 	const shared auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e)	{ return mixin(op ~ "a[b..e]"); }
 
-	auto ref opCast(T)()             	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
-	auto ref opCast(T)()        const	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
-	auto ref opCast(T)()    immutable	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
-	auto ref opCast(T)()       shared	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
-	auto ref opCast(T)() const shared	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
+	             auto ref opCast(T)()	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
+	       const auto ref opCast(T)()	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
+	   immutable auto ref opCast(T)()	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
+	      shared auto ref opCast(T)()	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
+	const shared auto ref opCast(T)()	{ static assert(!is(T : typeof(a)), "Cannot extract object with casting."); return cast(T)a; }
 
 	             auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
 	       const auto ref opBinary(string op, B)(auto ref B b)		{ return mixin("a " ~ op ~ " b"); }
