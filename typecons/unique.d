@@ -3,10 +3,6 @@ TODO:
 	assumeUiqueによるuniqueness付加
 Related:
 	@mono_shoo	http://ideone.com/gH9AX
-
-DMD patches
-	Issue 4424 - Copy constructor and templated opAssign cannot coexist	-> apply workaround
-	Issue 5889 - Struct literal,construction should be rvalue
 */
 module unique;
 
@@ -19,6 +15,11 @@ import valueproxy;
 
 debug = Uniq;
 
+// DMD patches
+version = bug5896;	// Issue 5896 - const overload matching is succumb to template parameter one
+version = bug4424;	// Issue 4424 - Copy constructor and templated opAssign cannot coexist	-> apply workaround
+version = bug5889;	// Issue 5889 - Struct literal,construction should be rvalue
+version = bugXXXX;	// Unknown issue
 
 // for debug print
 bool isInitialState(T)(ref T obj)
@@ -155,12 +156,15 @@ public:
 	/// Disable copy construction
 	@disable this(this) {}
 
+  version (bug4424)
+  {
     // @@@BUG4424@@@ workaround
     private mixin template _workaround4424()
     {
         @disable void opAssign(typeof(this));
     }
     mixin _workaround4424;
+  }
 
 	/// Assignment with rvalue of U : T
 	void opAssign(U : T)(auto ref U u)
@@ -197,24 +201,8 @@ public:
 	// Hack for std.algorithm.swap
 	@disable template proxySwap(T){}
 
-  version(none)
-  {
-	alias __object this;
-
-	// refuse explicit casting
-	auto ref opCast(U)()				{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
-	auto ref opCast(U)() const			{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
-	auto ref opCast(U)() immutable		{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
-	auto ref opCast(U)() shared			{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
-	auto ref opCast(U)() const shared	{ static assert(!is(U : T), "cast away."); return cast(U)__object; }
-
-	// cannot refuse implicit casting...
-  }
-  else
-  {
 	mixin ValueProxy!__object;	// Relay any operations to __object, and
 								// blocking implicit conversion from Unique!T to T
-  }
 }
 
 
@@ -337,11 +325,13 @@ void main()
 		Unique!S f(){ return Unique!S(20); }
 		us = f();
 		assert(us.val == 20);
-		us = S(30);
+		version (bug5889) us = move(S(30));
+		else              us = S(30);
 		assert(us.val == 30);
 	}
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-		Unique!S us = S(10);
+		version (bug5889) Unique!S us = move(S(10));
+		else              Unique!S us = S(10);
 		assert(us.val == 10);
 	}
 	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
@@ -356,9 +346,12 @@ void main()
 		auto us2 = Unique!S(20);
 		assert(us1.val == 10);
 		assert(us2.val == 20);
+	  version (bugXXXX) {} else
+	  {
 		swap(us1, us2);
 		assert(us1.val == 20);
 		assert(us2.val == 10);
+	  }
 	}
 	static assert(!__traits(compiles,
 	{
@@ -382,16 +375,14 @@ void main()
 		this(int n){ super(n); }
 	}
 
-  version(none)
-  {
-	static assert(!__traits(compiles,
+	version (bug5896) {} else
 	{
 		Foo foo;
 		auto us = Unique!Foo(&foo, 10);
-		Foo foo2 = cast(Foo)us;		// disable to bypass extract.
+		Foo foo2 = cast(Foo)us;		// can unsafe extract with explicit cast.
 		assert(foo2 is foo);
-	}));
-  }
+	}
+	version (bug5896) {} else
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Foo foo;
 		auto us = Unique!Foo(&foo, 10);
@@ -409,6 +400,7 @@ void main()
 		us = new Foo(20);
 		assert(us.val == 20);
 	}
+	version (bug5889) {} else
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Unique!Foo (init)
 		Unique!Foo us = Unique!Foo(Unique!Foo(10));
@@ -426,6 +418,7 @@ void main()
 		us = new Bar(20);
 		assert(us.val == 20);
 	}
+	version (bug5889) {} else
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Unique!Bar (init)
 		Unique!Foo us = Unique!Bar(10);
