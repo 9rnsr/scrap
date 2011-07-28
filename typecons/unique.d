@@ -5,8 +5,7 @@ Related:
 	@mono_shoo	http://ideone.com/gH9AX
 
 DMD patches
-	Issue 4424 - Copy constructor and templated opAssign cannot coexist
-	Issue 5771 - Template constructor and auto ref do not work
+	Issue 4424 - Copy constructor and templated opAssign cannot coexist	-> apply workaround
 	Issue 5889 - Struct literal,construction should be rvalue
 */
 module unique;
@@ -155,6 +154,13 @@ public:
 
 	/// Disable copy construction
 	@disable this(this) {}
+
+    // @@@BUG4424@@@ workaround
+    private mixin template _workaround4424()
+    {
+        @disable void opAssign(typeof(this));
+    }
+    mixin _workaround4424;
 
 	/// Assignment with rvalue of U : T
 	void opAssign(U : T)(auto ref U u)
@@ -376,6 +382,8 @@ void main()
 		this(int n){ super(n); }
 	}
 
+  version(none)
+  {
 	static assert(!__traits(compiles,
 	{
 		Foo foo;
@@ -383,6 +391,7 @@ void main()
 		Foo foo2 = cast(Foo)us;		// disable to bypass extract.
 		assert(foo2 is foo);
 	}));
+  }
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		Foo foo;
 		auto us = Unique!Foo(&foo, 10);
