@@ -1,9 +1,11 @@
 /**
 DMD patches
 	Issue 620 - Can't use property syntax with a template function
-	Issue 5896 - const overload matching is succumb to template parameter one
+//	Issue 5896 - const overload matching is succumb to template parameter one (found workaround)
 */
 module valueproxy;
+
+version = bug5896;
 
 
 // Blocking implicit/explicit value extraction
@@ -48,11 +50,26 @@ template ValueProxy(alias a)
 	      shared auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e) { return mixin(op ~ "a[b..e]"); }
 	const shared auto ref opSliceUnary(string op, B, E)(auto ref B b, auto ref E e) { return mixin(op ~ "a[b..e]"); }
 
+  version (bug5896)
+  {
+	template __Cast(T)
+	{
+		             auto ref opCast() { return cast(T)a; }
+		       const auto ref opCast() { return cast(T)a; }
+		   immutable auto ref opCast() { return cast(T)a; }
+		      shared auto ref opCast() { return cast(T)a; }
+		const shared auto ref opCast() { return cast(T)a; }
+	}
+	template opCast(T){ alias __Cast!T.opCast opCast; }
+  }
+  else
+  {
 	             auto ref opCast(T)() { return cast(T)a; }
 	       const auto ref opCast(T)() { return cast(T)a; }
 	   immutable auto ref opCast(T)() { return cast(T)a; }
 	      shared auto ref opCast(T)() { return cast(T)a; }
 	const shared auto ref opCast(T)() { return cast(T)a; }
+  }
 
 	             auto ref opBinary(string op, B)(auto ref B b) { return mixin("a " ~ op ~ " b"); }
 	       const auto ref opBinary(string op, B)(auto ref B b) { return mixin("a " ~ op ~ " b"); }
@@ -217,8 +234,7 @@ unittest
 	++s;
 	assert(s.value == 11);
 
-	// bug5896
-	//assert(cast(double)s == 11.0);
+	assert(cast(double)s == 11.0);
 
 	assert(s * 2 == 22);
 	S s2 = s * 10;
