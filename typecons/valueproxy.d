@@ -138,36 +138,69 @@ template ValueProxy(alias a)
 	      shared auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
 	const shared auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
 
-	template ValueProxy_MemberDispatch(string name)
-		if (!is(typeof(__traits(getMember, a, name)) == function))
+	template __TempDispatch(string name)
 	{
-		@property              auto ref opDispatch()()              { return mixin("a."~name       ); }
-		@property              auto ref opDispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
-
-		@property        const auto ref opDispatch()()              { return mixin("a."~name       ); }
-		@property        const auto ref opDispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
-
-		@property    immutable auto ref opDispatch()()              { return mixin("a."~name       ); }
-		@property    immutable auto ref opDispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
-
-		@property       shared auto ref opDispatch()()              { return mixin("a."~name       ); }
-		@property       shared auto ref opDispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
-
-		@property const shared auto ref opDispatch()()              { return mixin("a."~name       ); }
-		@property const shared auto ref opDispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
+		template dispatch(T...)
+		{
+			alias dispatch2!T.dispatch dispatch;
+		}
+		template dispatch2(T...)
+		{
+			             auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			       const auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			   immutable auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			      shared auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			const shared auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+		}
 	}
-	template ValueProxy_MemberDispatch(string name)
+	template __PropDispatch(string name)
+	{
+		@property              auto ref dispatch()()              { return mixin("a."~name       ); }
+		@property              auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
+
+		@property        const auto ref dispatch()()              { return mixin("a."~name       ); }
+		@property        const auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
+
+		@property    immutable auto ref dispatch()()              { return mixin("a."~name       ); }
+		@property    immutable auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
+
+		@property       shared auto ref dispatch()()              { return mixin("a."~name       ); }
+		@property       shared auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
+
+		@property const shared auto ref dispatch()()              { return mixin("a."~name       ); }
+		@property const shared auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
+	}
+	template __FuncDispatch(string name)
 		if (is(typeof(__traits(getMember, a, name)) == function))
 	{
-		             auto ref opDispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		       const auto ref opDispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		   immutable auto ref opDispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		      shared auto ref opDispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		const shared auto ref opDispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		             auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		       const auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		   immutable auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		      shared auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		const shared auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
 	}
 	template opDispatch(string name)
 	{
-		alias ValueProxy_MemberDispatch!name.opDispatch opDispatch;
+		static if (is(typeof(__traits(getMember, a, name)) == function))
+		{
+			//pragma(msg, name, ": function");
+			alias __FuncDispatch!name.dispatch opDispatch;
+		}
+		else static if (__traits(getOverloads, a, name).length)
+		{
+			//pragma(msg, name, ": function property");
+			alias __PropDispatch!name.dispatch opDispatch;
+		}
+		else static if (is(typeof(mixin("a."~name))))
+		{
+			//pragma(msg, name, ": raw property");
+			alias __PropDispatch!name.dispatch opDispatch;
+		}
+		else
+		{
+			//pragma(msg, name, ": template");
+			alias __TempDispatch!name.dispatch opDispatch;
+		}
 	}
 }
 unittest
@@ -209,9 +242,12 @@ unittest
 
         @property ref int val2(){ return field; }
 
-        @property const int prop(int n){ return n; }
-
         const int func(int x, int y){ return x; }
+
+		T tempfunc(T)()
+		{
+			return T.init;
+		}
 	}
 	class Hoge
 	{
@@ -247,7 +283,9 @@ unittest
 	assert(8 == h.val2);
 	assert(n == 8);
 
-	assert((h.prop = 10) == 10);
-
+	// member function
 	assert(h.func(2,4) == 2);
+
+	// template member function
+	assert(h.tempfunc!int() == 0);
 }
