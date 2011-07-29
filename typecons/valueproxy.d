@@ -52,7 +52,7 @@ template ValueProxy(alias a)
 
   version (bug5896)
   {
-	template __Cast(T)
+	template bug5896Cast(T)
 	{
 		             auto ref opCast() { return cast(T)a; }
 		       const auto ref opCast() { return cast(T)a; }
@@ -60,7 +60,7 @@ template ValueProxy(alias a)
 		      shared auto ref opCast() { return cast(T)a; }
 		const shared auto ref opCast() { return cast(T)a; }
 	}
-	template opCast(T){ alias __Cast!T.opCast opCast; }
+	template opCast(T){ alias bug5896Cast!T.opCast opCast; }
   }
   else
   {
@@ -155,22 +155,15 @@ template ValueProxy(alias a)
 	      shared auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
 	const shared auto ref opSliceOpAssign(string op, V, B, E)(auto ref V v, auto ref B b, auto ref E e)	{ return mixin("a[b..e] " ~ op~"= v"); }
 
-	template __TempDispatch(string name)
+	template ValueProxy_FunctionDispatch(string name)
 	{
-		template dispatch(T...)
-		{
-			alias dispatch2!T.dispatch dispatch;
-		}
-		template dispatch2(T...)
-		{
-			             auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
-			       const auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
-			   immutable auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
-			      shared auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
-			const shared auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
-		}
+		             auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		       const auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		   immutable auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		      shared auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		const shared auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
 	}
-	template __PropDispatch(string name)
+	template ValueProxy_PropertyDispatch(string name)
 	{
 		@property              auto ref dispatch()()              { return mixin("a."~name       ); }
 		@property              auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
@@ -187,36 +180,42 @@ template ValueProxy(alias a)
 		@property const shared auto ref dispatch()()              { return mixin("a."~name       ); }
 		@property const shared auto ref dispatch(V)(auto ref V v) { return mixin("a."~name~" = v"); }
 	}
-	template __FuncDispatch(string name)
-		if (is(typeof(__traits(getMember, a, name)) == function))
+	template ValueProxy_TemplateDispatch(string name)
 	{
-		             auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		       const auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		   immutable auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		      shared auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
-		const shared auto ref dispatch(Args...)(Args args) { return mixin("a."~name~"(args)"); }
+		template dispatch(T...)
+		{
+			alias dispatch2!T.dispatch dispatch;
+		}
+		template dispatch2(T...)
+		{
+			             auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			       const auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			   immutable auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			      shared auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+			const shared auto ref dispatch(Args...)(Args args){ return mixin("a."~name~"!T(args)"); }
+		}
 	}
 	template opDispatch(string name)
 	{
 		static if (is(typeof(__traits(getMember, a, name)) == function))
 		{
 			//pragma(msg, name, ": function");
-			alias __FuncDispatch!name.dispatch opDispatch;
+			alias ValueProxy_FunctionDispatch!name.dispatch opDispatch;
 		}
 		else static if (__traits(getOverloads, a, name).length)
 		{
 			//pragma(msg, name, ": function property");
-			alias __PropDispatch!name.dispatch opDispatch;
+			alias ValueProxy_PropertyDispatch!name.dispatch opDispatch;
 		}
 		else static if (is(typeof(mixin("a."~name))))
 		{
 			//pragma(msg, name, ": raw property");
-			alias __PropDispatch!name.dispatch opDispatch;
+			alias ValueProxy_PropDispatch!name.dispatch opDispatch;
 		}
 		else
 		{
 			//pragma(msg, name, ": template");
-			alias __TempDispatch!name.dispatch opDispatch;
+			alias ValueProxy_TemplateDispatch!name.dispatch opDispatch;
 		}
 	}
 }
