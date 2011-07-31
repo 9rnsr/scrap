@@ -16,10 +16,9 @@ import valueproxy;
 debug = Uniq;
 
 // DMD patches
-version = bug5896;	// Issue 5896 - const overload matching is succumb to template parameter one
+//version = bug5896;	// Issue 5896 - const overload matching is succumb to template parameter one
 version = bug4424;	// Issue 4424 - Copy constructor and templated opAssign cannot coexist	-> apply workaround
 version = bug5889;	// Issue 5889 - Struct literal,construction should be rvalue
-version = bugXXXX;	// Unknown issue
 
 // for debug print
 bool isInitialState(T)(ref T obj)
@@ -95,7 +94,7 @@ struct Unique(T)
 		static if (X.length != 1 || is(X[0] _ == Unique!U, U))
 			enum isStorableT = false;
 		else
-			enum isStorableT = 
+			enum isStorableT =
 				((is(T == class) || is(T == interface)) && is(X[0] : T)) ||
 				is(X[0] == T);
 	}
@@ -106,7 +105,7 @@ struct Unique(T)
 		else
 			enum isStorableU = false;
 	}
-	
+
 private:
 	// Do not use union in order to initialize __object with T.init.
 	T __object;	// initialized with T.init by default-construction
@@ -114,19 +113,20 @@ private:
 
 public:
 	/// In-place construction with args which constructor argumens of T
-	this(A...)(auto ref A args) if (!isStorableT!A && !isStorableU!A)
+	this(A...)(auto ref A args)
+		if (!isStorableT!A && !isStorableU!A)
 	{
-		static if (isClass!T)	// emplaceはclassに対して値semanticsで動くので
+		// emplace works against class type as value semantics
+		static if (isClass!T)
 			__object = new T(args);
 		else
 			emplace!T(cast(void[])__payload[], args);
 		debug(Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
 	}
 	/// Move construction with rvalue T
-	this(A...)(auto ref A args) if (isStorableT!A)
+	this(A...)(auto ref A args)
+		if (isStorableT!A && !__traits(isRef, args[0]))
 	{
-		static assert(!__traits(isRef, args[0]));
-
 		static if (is(A[0] _ == U, U : T) && is(U == T))
 			move(args[0], __object);
 		else
@@ -134,10 +134,9 @@ public:
 		debug(Uniq) writefln("Unique.this(%s)", T.stringof);
 	}
 	/// Move construction with rvalue T
-	this(A...)(auto ref A args) if (isStorableU!A)
+	this(A...)(auto ref A args)
+		if (isStorableU!A && !__traits(isRef, args[0]))
 	{
-		static assert(!__traits(isRef, args[0]));
-
 		static if (is(A[0] _ == Unique!U, U : T) && is(U == T))
 			move(args[0].__object, __object);
 		else
@@ -168,9 +167,8 @@ public:
 
 	/// Assignment with rvalue of U : T
 	void opAssign(U : T)(auto ref U u)
+		if (!__traits(isRef, u))
 	{
-		static assert(!__traits(isRef, u));
-
 		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
 		static if (is(U == T))
 			move(u, __object);
@@ -180,9 +178,8 @@ public:
 
 	/// Assignment with rvalue of Unique!(U : T)
 	void opAssign(U : T)(auto ref Unique!U u)
+		if (!__traits(isRef, u))
 	{
-		static assert(!__traits(isRef, u));
-
 		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
 		static if (is(U == T))
 			move(u, this);
@@ -346,12 +343,9 @@ void main()
 		auto us2 = Unique!S(20);
 		assert(us1.val == 10);
 		assert(us2.val == 20);
-	  version (bugXXXX) {} else
-	  {
 		swap(us1, us2);
 		assert(us1.val == 20);
 		assert(us2.val == 10);
-	  }
 	}
 	static assert(!__traits(compiles,
 	{
@@ -368,27 +362,23 @@ void main()
 		int val;
 		this(int n){ val = n; }
 		this(Foo* foo, int n){ *foo = this; val = n; }	// for internal test
-		int opCast(T : int)(){ return val; }
 	}
 	static class Bar : Foo
 	{
 		this(int n){ super(n); }
 	}
 
-	version (bug5896) {} else
 	{
 		Foo foo;
 		auto us = Unique!Foo(&foo, 10);
 		Foo foo2 = cast(Foo)us;		// can unsafe extract with explicit cast.
+									// ... or forbid this?
 		assert(foo2 is foo);
-	}
-	version (bug5896) {} else
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-		Foo foo;
-		auto us = Unique!Foo(&foo, 10);
 		assert(us.__object is foo);	// internal test
-		int val = cast(int)us;
-		assert(val == 10);
+	}
+	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+		auto us = Unique!Foo(10);
+		assert(us.val == 10);		// member forwarding
 	}
 
 	// init / assign test
@@ -400,13 +390,14 @@ void main()
 		us = new Foo(20);
 		assert(us.val == 20);
 	}
-	version (bug5889) {} else
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Unique!Foo (init)
-		Unique!Foo us = Unique!Foo(Unique!Foo(10));
+		version (bug5889) Unique!Foo us = Unique!Foo(move(Unique!Foo(10)));
+		else              Unique!Foo us = Unique!Foo(Unique!Foo(10));
 		assert(us.val == 10);
 		// Unique!Foo <- Unique!Foo (assign)
-		us = Unique!Foo(20);
+		version (bug5889) us = move(Unique!Foo(20));
+		else              us = Unique!Foo(20);
 		assert(us.val == 20);
 	}
 
@@ -418,13 +409,14 @@ void main()
 		us = new Bar(20);
 		assert(us.val == 20);
 	}
-	version (bug5889) {} else
 	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
 		// Unique!Foo <- Unique!Bar (init)
-		Unique!Foo us = Unique!Bar(10);
+		version (bug5889) Unique!Foo us = move(Unique!Bar(10));
+		else              Unique!Foo us = Unique!Bar(10);
 		assert(us.val == 10);
 		// Unique!Foo <- Unique!Bar (assign)
-		us = Unique!Bar(20);
+		version (bug5889) us = move(Unique!Bar(20));
+		else              us = Unique!Bar(20);
 		assert(us.val == 20);
 	}
 }
