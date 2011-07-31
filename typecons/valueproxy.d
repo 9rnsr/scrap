@@ -21,7 +21,7 @@ template ValueProxy(alias a)
     auto ref opCmp(B)(auto ref B b)
     {
         static assert(!(__traits(compiles, a.opCmp(b)) && __traits(compiles, a.opCmp(b))));
-        
+
         static if (__traits(compiles, a.opCmp(b)))
             return a.opCmp(b);
         else static if (__traits(compiles, b.opCmp(a)))
@@ -54,11 +54,11 @@ template ValueProxy(alias a)
   {
     template bug5896Cast(T)
     {
-                     auto ref opCast() { return cast(T)a; }
-               const auto ref opCast() { return cast(T)a; }
-           immutable auto ref opCast() { return cast(T)a; }
-              shared auto ref opCast() { return cast(T)a; }
-        const shared auto ref opCast() { return cast(T)a; }
+                     auto ref opCast()() { return cast(T)a; }
+               const auto ref opCast()() { return cast(T)a; }
+           immutable auto ref opCast()() { return cast(T)a; }
+              shared auto ref opCast()() { return cast(T)a; }
+        const shared auto ref opCast()() { return cast(T)a; }
     }
     template opCast(T){ alias bug5896Cast!T.opCast opCast; }
   }
@@ -210,7 +210,7 @@ template ValueProxy(alias a)
         else static if (is(typeof(mixin("a."~name))))
         {
             //pragma(msg, name, ": raw property");
-            alias ValueProxy_PropDispatch!name.dispatch opDispatch;
+            alias ValueProxy_PropertyDispatch!name.dispatch opDispatch;
         }
         else
         {
