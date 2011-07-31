@@ -194,8 +194,7 @@ public:
 
     // Nothing is required for move operations
 
-    // Hack for std.algorithm.swap
-    @disable template proxySwap(T){}
+    // Nothing is required for swap operations
 
     mixin ValueProxy!__object;  // Relay any operations to __object, and
                                 // blocking implicit conversion from Unique!T to T
