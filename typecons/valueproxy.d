@@ -259,6 +259,8 @@ unittest
 
         const int func(int x, int y){ return x; }
 
+        T opCast(T)(){ return T.init; }
+
         T tempfunc(T)()
         {
             return T.init;
@@ -300,6 +302,13 @@ unittest
 
     // member function
     assert(h.func(2,4) == 2);
+
+    // bug5896 test
+    assert(h.opCast!int() == 0);
+    assert(cast(int)h == 0);
+    immutable(Hoge) ih = new immutable(Hoge)(new Foo());
+    static assert(!__traits(compiles, ih.opCast!int()));
+    static assert(!__traits(compiles, cast(int)ih));
 
     // template member function
     assert(h.tempfunc!int() == 0);
