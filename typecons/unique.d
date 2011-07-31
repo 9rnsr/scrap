@@ -109,7 +109,6 @@ struct Unique(T)
 private:
     // Do not use union in order to initialize __object with T.init.
     T __object; // initialized with T.init by default-construction
-    @property ref ubyte[T.sizeof] __payload(){ return *(cast(ubyte[T.sizeof]*)&__object); }
 
 public:
     /// In-place construction with args which constructor argumens of T
@@ -120,7 +119,7 @@ public:
         static if (isClass!T)
             __object = new T(args);
         else
-            emplace!T(cast(void[])__payload[], args);
+            emplace(&__object, args);
         debug (Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
     }
     /// Move construction with rvalue T
