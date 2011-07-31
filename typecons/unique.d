@@ -121,7 +121,7 @@ public:
 			__object = new T(args);
 		else
 			emplace!T(cast(void[])__payload[], args);
-		debug(Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
+		debug (Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
 	}
 	/// Move construction with rvalue T
 	this(A...)(auto ref A args)
@@ -131,7 +131,7 @@ public:
 			move(args[0], __object);
 		else
 			__object = args[0];
-		debug(Uniq) writefln("Unique.this(%s)", T.stringof);
+		debug (Uniq) writefln("Unique.this(%s)", T.stringof);
 	}
 	/// Move construction with rvalue T
 	this(A...)(auto ref A args)
@@ -141,11 +141,11 @@ public:
 			move(args[0].__object, __object);
 		else
 			__object = args[0].__object;
-		debug(Uniq) writefln("Unique.this(Unique!(%s%s))", U.stringof, (is(U == T) ? "" : " : "~T.stringof));
+		debug (Uniq) writefln("Unique.this(Unique!(%s%s))", U.stringof, (is(U == T) ? "" : " : "~T.stringof));
 	}
 
 	// for debug print
-	debug(Uniq) ~this()
+	debug (Uniq) ~this()
 	{
 		// for debug
 		if (isInitialState(__object))
@@ -169,7 +169,7 @@ public:
 	void opAssign(U : T)(auto ref U u)
 		if (!__traits(isRef, u))
 	{
-		debug(Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
+		debug (Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
 		static if (is(U == T))
 			move(u, __object);
 		else
@@ -180,7 +180,7 @@ public:
 	void opAssign(U : T)(auto ref Unique!U u)
 		if (!__traits(isRef, u))
 	{
-		debug(Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
+		debug (Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
 		static if (is(U == T))
 			move(u, this);
 		else
@@ -225,17 +225,17 @@ struct S
 {
 	int val;
 
-	this(int n)	{ debug(Uniq) writefln("S.this(%s)", n); val = n; }
-	this(this)	{ debug(Uniq) writefln("S.this(this)"); }
+	this(int n)	{ debug (Uniq) writefln("S.this(%s)", n); val = n; }
+	this(this)	{ debug (Uniq) writefln("S.this(this)"); }
 	~this()		{
-	  debug(Uniq)
+	  debug (Uniq)
 		if (isInitialState(this))
 			writefln("S.~this() val = %s", val); }
 }
 
 void main()
 {
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		Unique!S us;
 		assert(us == S.init);
 	}
@@ -244,29 +244,33 @@ void main()
 		S s = S(99);
 		Unique!S us = s;
 	}));
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		auto us = Unique!S(10);
 		assert(us.val == 10);
 		Unique!S f(){ return Unique!S(20); }
 		us = f();
 		assert(us.val == 20);
-		version (bug5889) us = move(S(30));
-		else              us = S(30);
+	  version (bug5889)
+		us = move(S(30));
+	  else
+		us = S(30);
 		assert(us.val == 30);
 	}
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
-		version (bug5889) Unique!S us = move(S(10));
-		else              Unique!S us = S(10);
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
+	  version (bug5889)
+		Unique!S us = move(S(10));
+	  else
+		Unique!S us = S(10);
 		assert(us.val == 10);
 	}
-	{	writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		Unique!S us1 = Unique!S(10);
 		assert(us1.val == 10);
 		Unique!S us2;
 		move(us1, us2);
 		assert(us2.val == 10);
 	}
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		auto us1 = Unique!S(10);
 		auto us2 = Unique!S(20);
 		assert(us1.val == 10);
@@ -280,7 +284,7 @@ void main()
 		auto us = Unique!S(10);
 		S s = us;
 	}));
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		auto us = Unique!S(10);
 		S s = us.extract;
 	}
@@ -304,13 +308,13 @@ void main()
 		assert(foo2 is foo);
 		assert(us.__object is foo);	// internal test
 	}
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		auto us = Unique!Foo(10);
 		assert(us.val == 10);		// member forwarding
 	}
 
 	// init / assign test
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		// Unique!Foo <- Foo (init)
 		Unique!Foo us = new Foo(10);
 		assert(us.val == 10);
@@ -318,18 +322,22 @@ void main()
 		us = new Foo(20);
 		assert(us.val == 20);
 	}
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		// Unique!Foo <- Unique!Foo (init)
-		version (bug5889) Unique!Foo us = Unique!Foo(move(Unique!Foo(10)));
-		else              Unique!Foo us = Unique!Foo(Unique!Foo(10));
+	  version (bug5889)
+		Unique!Foo us = Unique!Foo(move(Unique!Foo(10)));
+	  else
+		Unique!Foo us = Unique!Foo(Unique!Foo(10));
 		assert(us.val == 10);
 		// Unique!Foo <- Unique!Foo (assign)
-		version (bug5889) us = move(Unique!Foo(20));
-		else              us = Unique!Foo(20);
+	  version (bug5889)
+		us = move(Unique!Foo(20));
+	  else
+		us = Unique!Foo(20);
 		assert(us.val == 20);
 	}
 
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		// Unique!Foo <- Bar (init)
 		Unique!Foo us = new Bar(10);
 		assert(us.val == 10);
@@ -337,14 +345,18 @@ void main()
 		us = new Bar(20);
 		assert(us.val == 20);
 	}
-	{	debug(Uniq) writefln(">>>> ---"); scope(exit) writefln("<<<< ---");
+	{	debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
 		// Unique!Foo <- Unique!Bar (init)
-		version (bug5889) Unique!Foo us = move(Unique!Bar(10));
-		else              Unique!Foo us = Unique!Bar(10);
+	  version (bug5889)
+		Unique!Foo us = move(Unique!Bar(10));
+	  else
+		Unique!Foo us = Unique!Bar(10);
 		assert(us.val == 10);
 		// Unique!Foo <- Unique!Bar (assign)
-		version (bug5889) us = move(Unique!Bar(20));
-		else              us = Unique!Bar(20);
+	  version (bug5889)
+		us = move(Unique!Bar(20));
+	  else
+		us = Unique!Bar(20);
 		assert(us.val == 20);
 	}
 }
