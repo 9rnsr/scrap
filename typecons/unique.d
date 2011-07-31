@@ -7,7 +7,7 @@ Related:
 module unique;
 
 import std.algorithm : move;
-//import std.conv : emplace;
+import std.conv : emplace;
 import std.traits;
 //import std.exception : assumeUnique;	//?
 
@@ -215,79 +215,7 @@ T assumeUnique(T t) if (is(T == immutable))
 }+/
 
 
-import std.exception, std.conv : ConvException;
-
-// emplace
-/**
-Given a raw memory area $(D chunk), constructs an object of non-$(D
-class) type $(D T) at that address. The constructor is passed the
-arguments $(D Args). The $(D chunk) must be as least as large as $(D
-T) needs and should have an alignment multiple of $(D T)'s alignment.
-
-This function can be $(D @trusted) if the corresponding constructor of
-$(D T) is $(D @safe).
-
-Returns: A pointer to the newly constructed object.
- */
-T* emplace(T, Args...)(void[] chunk, Args args) if (!is(T == class))
-{
-    enforce(chunk.length >= T.sizeof,
-            new ConvException("emplace: target size too small"));
-    auto a = cast(size_t) chunk.ptr;
-    version (OSX)       // for some reason, breaks on other platforms
-        enforce(a % T.alignof == 0, new ConvException("misalignment"));
-    auto result = cast(typeof(return)) chunk.ptr;
-
-    void initialize()
-    {
-		auto init = cast(ubyte[])typeid(T).init;
-		if (init.ptr)
-			(cast(ubyte[])chunk)[] = init[];
-		else
-			(cast(ubyte[])chunk)[] = 0;
-    //  static T i;
-    //  memcpy(chunk.ptr, &i, T.sizeof);
-    }
-
-    static if (Args.length == 0)
-    {
-        // Just initialize the thing
-        initialize();
-    }
-    else static if (is(T == struct))
-    {
-        static if (is(typeof(result.__ctor(args))))
-        {
-            // T defines a genuine constructor accepting args
-            // Go the classic route: write .init first, then call ctor
-            initialize();
-            result.__ctor(args);
-        }
-        else static if (is(typeof(T(args))))
-        {
-            // Struct without constructor that has one matching field for
-            // each argument
-            initialize();
-            *result = T(args);
-        }
-        else static if (Args.length == 1 && is(Args[0] : T))
-        {
-            initialize();
-            *result = args[0];
-        }
-    }
-    else static if (Args.length == 1 && is(Args[0] : T))
-    {
-        // Primitive type. Assignment is fine for initialization.
-        *result = args[0];
-    }
-    else
-    {
-        static assert(false, "Don't know how to initialize an object of type "
-                ~ T.stringof ~ " with arguments " ~ Args.stringof);
-    }
-    return result;
-}
+/**************************************/
 
 
 import std.stdio;
