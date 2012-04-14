@@ -265,6 +265,17 @@ unittest
         {
             return T.init;
         }
+
+        template TempFunc2(T)
+        {
+            template tempfunc2(U)
+            {
+                Tuple!(T, U, V) tempfunc2(V)(V v)
+                {
+                    return tuple(T.init, U.init, v);
+                }
+            }
+        }
     }
     class Hoge
     {
@@ -312,4 +323,6 @@ unittest
 
     // template member function
     assert(h.tempfunc!int() == 0);
+
+    //assert(h.TempFunc2!int.tempfunc2!double("a") == tuple(0, double.nan, "a"));
 }

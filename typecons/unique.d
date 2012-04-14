@@ -1,26 +1,17 @@
 /**
-TODO:
-    assumeUiqueによるuniqueness付加
 Related:
     @mono_shoo  http://ideone.com/gH9AX
 */
 module unique;
 
-import std.algorithm : move;
-import std.conv : emplace;
 import std.traits;
-//import std.exception : assumeUnique;  //?
-
-import valueproxy;
 
 debug = Uniq;
 
-// DMD patches
-//version = bug5896;    // Issue 5896 - const overload matching is succumb to template parameter one
 version = bug4424;  // Issue 4424 - Copy constructor and templated opAssign cannot coexist  -> apply workaround
-version = bug5889;  // Issue 5889 - Struct literal,construction should be rvalue
 
 // for debug print
+debug (Uniq)
 bool isInitialState(T)(ref T obj)
 {
     static if (is(T == class) || is(T == interface) || isDynamicArray!T || isPointer!T)
@@ -34,26 +25,6 @@ bool isInitialState(T)(ref T obj)
         else
             return payload[] != (ubyte[T.sizeof]).init;
     }
-}
-
-
-template isClass(T)
-{
-    enum isClass = is(T == class);
-}
-
-template isInterface(T)
-{
-    enum isClass = is(T == interface);
-}
-
-template isReferenceType(T)
-{
-    enum isReferenceType = (isClass!T ||
-                            isInterface!T ||
-                            isPointer!T ||
-                            isDynamicArray!T ||
-                            isAssosiativeArray!T);
 }
 
 
@@ -89,6 +60,10 @@ T t = u.extract;            // Release unique object
 */
 struct Unique(T)
 {
+    import std.algorithm : move;
+    import std.conv : emplace;
+    import std.typecons : Proxy;
+
     template isStorableT(X...)
     {
         static if (X.length != 1 || is(X[0] _ == Unique!U, U))
@@ -116,7 +91,7 @@ public:
         if (!isStorableT!A && !isStorableU!A)
     {
         // emplace works against class type as value semantics
-        static if (isClass!T)
+        static if (is(T == class))
             __object = new T(args);
         else
             emplace(&__object, args);
@@ -196,12 +171,14 @@ public:
 
     // Nothing is required for swap operations
 
-    mixin ValueProxy!__object;  // Relay any operations to __object, and
-                                // blocking implicit conversion from Unique!T to T
+    // Relay all operations to __object, except implicit conversion.
+    mixin Proxy!__object;
 }
 
 
 /+
+//import std.exception : assumeUnique;  //?
+
 // todo
 Unique!T assumeUnique(T t) if (is(Unqual!T == T) || is(T == const))
 {
@@ -216,8 +193,8 @@ T assumeUnique(T t) if (is(T == immutable))
 /**************************************/
 
 
-import std.stdio;
-import std.algorithm;
+debug (Uniq) import std.stdio;
+import std.algorithm : swap, move;
 
 struct S
 {
@@ -248,16 +225,10 @@ void main()
         Unique!S f(){ return Unique!S(20); }
         us = f();
         assert(us.val == 20);
-      version (bug5889)
-        us = move(S(30));
-      else
         us = S(30);
         assert(us.val == 30);
     }
     {   debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
-      version (bug5889)
-        Unique!S us = move(S(10));
-      else
         Unique!S us = S(10);
         assert(us.val == 10);
     }
@@ -322,15 +293,9 @@ void main()
     }
     {   debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
         // Unique!Foo <- Unique!Foo (init)
-      version (bug5889)
-        Unique!Foo us = Unique!Foo(move(Unique!Foo(10)));
-      else
         Unique!Foo us = Unique!Foo(Unique!Foo(10));
         assert(us.val == 10);
         // Unique!Foo <- Unique!Foo (assign)
-      version (bug5889)
-        us = move(Unique!Foo(20));
-      else
         us = Unique!Foo(20);
         assert(us.val == 20);
     }
@@ -345,15 +310,9 @@ void main()
     }
     {   debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
         // Unique!Foo <- Unique!Bar (init)
-      version (bug5889)
-        Unique!Foo us = move(Unique!Bar(10));
-      else
         Unique!Foo us = Unique!Bar(10);
         assert(us.val == 10);
         // Unique!Foo <- Unique!Bar (assign)
-      version (bug5889)
-        us = move(Unique!Bar(20));
-      else
         us = Unique!Bar(20);
         assert(us.val == 20);
     }
