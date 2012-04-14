@@ -20,13 +20,13 @@ struct AnyRange(E, RangeKind=void)
 {
 	void function(const(void)*, int, void*) vtable;
 	void[] payload;
-	
+
 	this(typeof(vtable) vtbl, void[] data)
 	{
 		vtable = vtbl;
 		payload = data;
 	}
-	
+
 	void opAssign(R)(R r)
 	{
 	  static if (is(R == AnyRange!E))
@@ -48,21 +48,35 @@ struct AnyRange(E, RangeKind=void)
 			case 1:	*(cast(E*)r) = (cast(R*)p).front;		break;	// front
 			case 2:	(cast(R*)p).popFront;					break;	// popFront
 			case 3:	*cast(R*)((cast(AnyRange!E*)r).payload.ptr) = (cast(R*)p).save;	break;	// save
+			default:assert(0);
 			}
 		}
-		
+
 		payload.length = R.sizeof;
 		payload[] = (cast(void*)&r)[0 .. R.sizeof];
 		vtable = &vtableOf;
 		debug writefln("AnyRange.opAssign payload.length = %s", payload.length);
 	  }
 	}
-	
-	@property bool empty() const{ bool r; vtable(payload.ptr, 0, cast(void*)&r); return r; }
-	@property E front() const	{ E    r; vtable(payload.ptr, 1, cast(void*)&r); return r; }
-	void popFront()				{ vtable(payload.ptr, 2, null); }
-	
-	typeof(this) save()
+
+	@property bool empty() const
+	{
+		bool r;
+		vtable(payload.ptr, 0, cast(void*)&r);
+		return r;
+	}
+	@property E front() const
+	{
+		E r;
+		vtable(payload.ptr, 1, cast(void*)&r);
+		return r;
+	}
+	void popFront()
+	{
+		vtable(payload.ptr, 2, null);
+	}
+
+	@property typeof(this) save()
 	{
 		typeof(this) r;
 		vtable(payload.ptr, 3, &r);
@@ -77,33 +91,42 @@ auto iteration(alias fun, R)(R r)
 struct Iteration(alias fun, R)
 {
 	R r;
-	
-	@property bool empty() const			{ return r.empty; }
-	@property ElementType!R front() const	{ return r.front; }
-	void popFront()							{ r = fun(r); }
-	
+
+	@property bool empty() const
+	{
+		return r.empty;
+	}
+	@property ElementType!R front() const
+	{
+		return r.front;
+	}
+	void popFront()
+	{
+		r = fun(r);
+	}
 }
 
 version(all)
 {
+// any range version
 void main()
 {
 	static AnyRange!int sieve(AnyRange!int r)
 	{
 		auto save_front = r.front;
-		
+
 		r.popFront();
-		
+
 		bool pred(int e)
 		{
 			debug writefln("pred = %s %% %s", e, save_front);
 			return e % save_front != 0;
 		}
-		
+
 		mixin annotateEscape!pred;	// ないとpredが正しく動作しない
 		return anyRange!int(filter!pred(r));
 	}
-	
+
 	auto primes = iteration!sieve(anyRange!int(sequence!"n+2"()));
   debug(1)
   {
@@ -115,10 +138,12 @@ void main()
 	}
   }
   else
-	writefln("%s", take(primes, 5));
+	//writefln("%s", take(primes, 5));
+	writefln("%s", primes.take(5));
 
 }
 }else{
+// array and sequence + reduce version
 void main()
 {
 	int[] sieve(int[] primes, int n)
@@ -128,7 +153,8 @@ void main()
 		return primes ~ n;
 	}
 
-	writefln("%s", take(reduce!sieve((int[]).init, take(sequence!"n+2"(),100)), 5));
+//	writefln("%s", take(reduce!sieve((int[]).init, take(sequence!"n+2"(),100)), 5));
+	writefln("%s", reduce!sieve((int[]).init, sequence!"n+2"().take(100)).take(5));
 
 }
 }

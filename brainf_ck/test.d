@@ -6,7 +6,6 @@ void main()
 		`+++++++++[>++++++++>+++++++++++>+++++<<<-]>.>++.+++++++..+++.>-.`
 		`------------.<++++++++.--------.+++.------.--------.>+.`
 	);
-	
 }
 
 
@@ -15,8 +14,7 @@ class Brainf
 static:
 	size_t ptr;
 	ubyte[100] buf;
-	
-	
+
 	void ck(string code)
 	{
 		eval(code);
@@ -27,7 +25,7 @@ static:
 		{
 			throw new Exception("syntax error");
 		}
-		
+
 		size_t pc = 0;
 		while (pc < code.length)
 		{
