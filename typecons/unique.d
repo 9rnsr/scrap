@@ -19,7 +19,7 @@ bool isInitialState(T)(ref T obj)
     else
     {
         auto payload = (cast(ubyte*)&obj)[0 .. T.sizeof];
-        auto obj_init = cast(ubyte[])typeid(T).init;
+        auto obj_init = cast(ubyte[])typeid(T).init();
         if (obj_init.ptr)
             return payload[] != obj_init[];
         else
@@ -63,7 +63,12 @@ struct Unique(T)
     import std.algorithm : move;
     import std.conv : emplace;
     import std.typecons : Proxy;
+    debug (Uniq) import std.stdio;
 
+    template isStorable(X...)
+    {
+        enum isStorable = isStorableT!X || isStorableU!X;
+    }
     template isStorableT(X...)
     {
         static if (X.length != 1 || is(X[0] _ == Unique!U, U))
@@ -87,8 +92,7 @@ private:
 
 public:
     /// In-place construction with args which constructor argumens of T
-    this(A...)(auto ref A args)
-        if (!isStorableT!A && !isStorableU!A)
+    this(A...)(auto ref A args) if (!isStorable!A)
     {
         // emplace works against class type as value semantics
         static if (is(T == class))
@@ -97,26 +101,34 @@ public:
             emplace(&__object, args);
         debug (Uniq) writefln("Unique.this%s", (typeof(args)).stringof);
     }
+
     /// Move construction with rvalue T
-    this(A...)(auto ref A args)
-        if (isStorableT!A && !__traits(isRef, args[0]))
+    @disable this(A)(ref A arg) if (isStorable!A);
+    /// ditto
+    this(A)(A arg) if (isStorable!A)
     {
-        static if (is(A[0] _ == U, U : T) && is(U == T))
-            move(args[0], __object);
+        static if (isStorableT!A)
+        {
+            static if (is(A _ == U, U : T) && is(U == T))
+                move(arg, __object);
+            else
+                __object = arg;
+            debug (Uniq) writefln("Unique.this(%s)", T.stringof);
+        }
+        else static if (isStorableU!A)
+        {
+            static if (is(A _ == Unique!U, U : T) && is(U == T))
+                move(arg.__object, __object);
+            else
+                __object = arg.__object;
+            debug (Uniq) writefln("Unique.this(Unique!(%s%s))", U.stringof, (is(U == T) ? "" : " : "~T.stringof));
+        }
         else
-            __object = args[0];
-        debug (Uniq) writefln("Unique.this(%s)", T.stringof);
+            static assert(0);
     }
-    /// Move construction with rvalue T
-    this(A...)(auto ref A args)
-        if (isStorableU!A && !__traits(isRef, args[0]))
-    {
-        static if (is(A[0] _ == Unique!U, U : T) && is(U == T))
-            move(args[0].__object, __object);
-        else
-            __object = args[0].__object;
-        debug (Uniq) writefln("Unique.this(Unique!(%s%s))", U.stringof, (is(U == T) ? "" : " : "~T.stringof));
-    }
+
+    /// Disable copy construction
+    @disable this(this) {}
 
     // for debug print
     debug (Uniq) ~this()
@@ -125,9 +137,6 @@ public:
         if (isInitialState(__object))
             writefln("Unique.~this()");
     }
-
-    /// Disable copy construction
-    @disable this(this) {}
 
   version (bug4424)
   {
@@ -140,8 +149,9 @@ public:
   }
 
     /// Assignment with rvalue of U : T
-    void opAssign(U : T)(auto ref U u)
-        if (!__traits(isRef, u))
+    @disable void opAssign(U : T)(ref U u);
+    /// ditto
+    void opAssign(U : T)(U u)
     {
         debug (Uniq) writefln("Unique.opAssign(T): u.val = %s, this.val = %s", u.val, this.val);
         static if (is(U == T))
@@ -151,8 +161,9 @@ public:
     }
 
     /// Assignment with rvalue of Unique!(U : T)
-    void opAssign(U : T)(auto ref Unique!U u)
-        if (!__traits(isRef, u))
+    @disable void opAssign(U : T)(ref Unique!U u);
+    /// ditto
+    void opAssign(U : T)(Unique!U u)
     {
         debug (Uniq) writefln("Unique.opAssign(U): u.val = %s, this.val = %s", u.val, this.val);
         static if (is(U == T))
@@ -171,7 +182,7 @@ public:
 
     // Nothing is required for swap operations
 
-    // Relay all operations to __object, except implicit conversion.
+    // Forward all operations to __object, except implicit conversion.
     mixin Proxy!__object;
 }
 
@@ -192,24 +203,23 @@ T assumeUnique(T t) if (is(T == immutable))
 
 /**************************************/
 
-
-debug (Uniq) import std.stdio;
-import std.algorithm : swap, move;
-
-struct S
+unittest
 {
-    int val;
+    import std.algorithm;   // swap, move
+    debug (Uniq) import std.stdio;
 
-    this(int n) { debug (Uniq) writefln("S.this(%s)", n); val = n; }
-    this(this)  { debug (Uniq) writefln("S.this(this)"); }
-    ~this()     {
-      debug (Uniq)
-        if (isInitialState(this))
-            writefln("S.~this() val = %s", val); }
-}
+    static struct S
+    {
+        int val;
 
-void main()
-{
+        this(int n) { debug (Uniq) writefln("S.this(%s)", n); val = n; }
+        this(this)  { debug (Uniq) writefln("S.this(this)"); }
+        ~this()     {
+          debug (Uniq)
+            if (isInitialState(this))
+                writefln("S.~this() val = %s", val); }
+    }
+
     {   debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
         Unique!S us;
         assert(us == S.init);
@@ -255,7 +265,7 @@ void main()
     }));
     {   debug (Uniq) { writefln(">>>> ---"); scope(exit) writefln("<<<< ---"); }
         auto us = Unique!S(10);
-        S s = us.extract;
+        S s = us.extract();
     }
 
     static class Foo
